@@ -1,66 +1,4 @@
-import { FileNode, Tab, HardwareInfo } from '../types';
-
-export interface BugFixModalState {
-  open: boolean;
-  explanation?: string;
-  fixedCode?: string;
-  loading: boolean;
-}
-
-export interface AISettings {
-  autocomplete: string;
-  analyze: string;
-  bugfix: string;
-  docstring: string;
-  flow: string;
-}
-
-export interface AppState {
-  projectRoot: string | null;
-  fileTree: FileNode[];
-  tabs: Tab[];
-  activeTabId: string | null;
-  splitTabId: string | null;
-  terminalVisible: boolean;
-  hardware: HardwareInfo | null;
-  settings: Record<string, any>;
-  analysisResult: string;
-  bugFixModal: BugFixModalState;
-  sidebarVisible: boolean;
-  sidebarPanel: 'explorer' | 'search' | 'git';
-  cursorLine: number;
-  cursorCol: number;
-  aiSettings: AISettings;
-  aiSettingsOpen: boolean;
-  llamaStatus: 'stopped' | 'starting' | 'running' | 'error';
-  llamaError: string | null;
-  contextMenu: { x: number; y: number; node: FileNode } | null;
-}
-
-export type AppAction =
-  | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'SET_SIDEBAR_PANEL'; panel: 'explorer' | 'search' | 'git' }
-  | { type: 'SET_PROJECT'; root: string; tree: FileNode[] }
-  | { type: 'SET_FILE_TREE'; tree: FileNode[] }
-  | { type: 'ADD_TAB'; tab: Tab }
-  | { type: 'REMOVE_TAB'; id: string }
-  | { type: 'SET_ACTIVE_TAB'; id: string }
-  | { type: 'UPDATE_TAB_CONTENT'; id: string; content: string }
-  | { type: 'MARK_TAB_SAVED'; id: string }
-  | { type: 'TOGGLE_TERMINAL' }
-  | { type: 'SET_HARDWARE'; hw: HardwareInfo }
-  | { type: 'SET_SETTINGS'; settings: Record<string, any> }
-  | { type: 'SET_ANALYSIS'; text: string }
-  | { type: 'SET_CURSOR'; line: number; col: number }
-  | { type: 'OPEN_BUG_FIX_MODAL'; explanation?: string; fixedCode?: string }
-  | { type: 'SET_BUG_FIX_LOADING'; loading: boolean }
-  | { type: 'SET_BUG_FIX_RESULT'; explanation: string; fixedCode: string }
-  | { type: 'CLOSE_BUG_FIX_MODAL' }
-  | { type: 'TOGGLE_AI_SETTINGS' }
-  | { type: 'SET_AI_SETTINGS'; settings: Partial<AISettings> }
-  | { type: 'SET_SPLIT_TAB'; tabId: string | null }
-  | { type: 'SET_LLAMA_STATUS'; status: string; error?: string | null }
-  | { type: 'SET_CONTEXT_MENU'; menu: AppState['contextMenu'] };
+import { AppState, AppAction } from '../types';
 
 export const initialState: AppState = {
   projectRoot: null,
@@ -88,19 +26,51 @@ export const initialState: AppState = {
   llamaStatus: 'stopped',
   llamaError: null,
   contextMenu: null,
+  // ── New state ──────────────────────────────────────────────────────────
+  browserVisible: false,
+  commandPaletteOpen: false,
 };
 
 export function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case 'SET_PROJECT':
-      return { ...state, projectRoot: action.root, fileTree: action.tree };
-    case 'SET_FILE_TREE':
-      return { ...state, fileTree: action.tree };
+    // ─────────────────────── VIEW TOGGLES ──────────────────────────────
+    case 'TOGGLE_SIDEBAR':
+      return { ...state, sidebarVisible: !state.sidebarVisible };
+
+    case 'SET_SIDEBAR_PANEL':
+      return { ...state, sidebarPanel: action.panel, sidebarVisible: true };
+
+    case 'TOGGLE_TERMINAL':
+      return { ...state, terminalVisible: !state.terminalVisible };
+
+    case 'TOGGLE_BROWSER':
+      return { ...state, browserVisible: !state.browserVisible };
+
+    case 'TOGGLE_COMMAND_PALETTE':
+      return { ...state, commandPaletteOpen: !state.commandPaletteOpen };
+
+    case 'TOGGLE_AI_SETTINGS':
+      return { ...state, aiSettingsOpen: !state.aiSettingsOpen };
+
+    // ─────────────────────── SPLIT EDITOR ──────────────────────────────
+    case 'SET_SPLIT_TAB':
+      return { ...state, splitTabId: action.tabId };
+
+    case 'TOGGLE_SPLIT': {
+      if (state.splitTabId) {
+        return { ...state, splitTabId: null };
+      }
+      const other = state.tabs.find(t => t.id !== state.activeTabId);
+      return { ...state, splitTabId: other?.id ?? null };
+    }
+
+    // ─────────────────────── TAB MANAGEMENT ────────────────────────────
     case 'ADD_TAB': {
       const exists = state.tabs.find(t => t.id === action.tab.id);
       if (exists) return { ...state, activeTabId: action.tab.id };
       return { ...state, tabs: [...state.tabs, action.tab], activeTabId: action.tab.id };
     }
+
     case 'REMOVE_TAB': {
       const tabs = state.tabs.filter(t => t.id !== action.id);
       let active = state.activeTabId;
@@ -108,8 +78,10 @@ export function reducer(state: AppState, action: AppAction): AppState {
       const splitTabId = state.splitTabId === action.id ? null : state.splitTabId;
       return { ...state, tabs, activeTabId: active, splitTabId };
     }
+
     case 'SET_ACTIVE_TAB':
       return { ...state, activeTabId: action.id };
+
     case 'UPDATE_TAB_CONTENT':
       return {
         ...state,
@@ -117,21 +89,48 @@ export function reducer(state: AppState, action: AppAction): AppState {
           t.id === action.id ? { ...t, content: action.content, isDirty: true } : t
         ),
       };
+
     case 'MARK_TAB_SAVED':
       return {
         ...state,
         tabs: state.tabs.map(t => t.id === action.id ? { ...t, isDirty: false } : t),
       };
-    case 'TOGGLE_TERMINAL':
-      return { ...state, terminalVisible: !state.terminalVisible };
-    case 'SET_HARDWARE':
-      return { ...state, hardware: action.hw };
-    case 'SET_SETTINGS':
-      return { ...state, settings: { ...state.settings, ...action.settings } };
+
+    case 'NEXT_TAB': {
+      const idx = state.tabs.findIndex(t => t.id === state.activeTabId);
+      if (idx === -1 || state.tabs.length === 0) return state;
+      return { ...state, activeTabId: state.tabs[(idx + 1) % state.tabs.length].id };
+    }
+
+    case 'PREVIOUS_TAB': {
+      const idx = state.tabs.findIndex(t => t.id === state.activeTabId);
+      if (idx === -1 || state.tabs.length === 0) return state;
+      return { ...state, activeTabId: state.tabs[(idx - 1 + state.tabs.length) % state.tabs.length].id };
+    }
+
+    case 'CLOSE_TAB': {
+      if (!state.activeTabId) return state;
+      return reducer(state, { type: 'REMOVE_TAB', id: state.activeTabId });
+    }
+
+    // ─────────────────────── PROJECT & FILE TREE ───────────────────────
+    case 'SET_PROJECT':
+      return { ...state, projectRoot: action.root, fileTree: action.tree };
+
+    case 'SET_FILE_TREE':
+      return { ...state, fileTree: action.tree };
+
+    // ─────────────────────── AI & ANALYSIS ─────────────────────────────
     case 'SET_ANALYSIS':
       return { ...state, analysisResult: action.text };
-    case 'SET_CURSOR':
-      return { ...state, cursorLine: action.line, cursorCol: action.col };
+
+    case 'SET_AI_SETTINGS':
+      return { ...state, aiSettings: { ...state.aiSettings, ...action.settings } };
+
+    case 'SET_LLAMA_STATUS':
+      return { ...state, llamaStatus: action.status as any, llamaError: action.error ?? null };
+
+    // ─────────────────────── BUG FIX MODAL ─────────────────────────────
     case 'OPEN_BUG_FIX_MODAL':
       return {
         ...state,
@@ -142,29 +141,34 @@ export function reducer(state: AppState, action: AppAction): AppState {
           loading: !action.explanation,
         },
       };
+
     case 'SET_BUG_FIX_LOADING':
       return { ...state, bugFixModal: { ...state.bugFixModal, loading: action.loading } };
+
     case 'SET_BUG_FIX_RESULT':
       return {
         ...state,
         bugFixModal: { ...state.bugFixModal, loading: false, explanation: action.explanation, fixedCode: action.fixedCode },
       };
+
     case 'CLOSE_BUG_FIX_MODAL':
       return { ...state, bugFixModal: { ...state.bugFixModal, open: false } };
-    case 'TOGGLE_SIDEBAR':
-      return { ...state, sidebarVisible: !state.sidebarVisible };
-    case 'SET_SIDEBAR_PANEL':
-      return { ...state, sidebarPanel: action.panel, sidebarVisible: true };
-    case 'TOGGLE_AI_SETTINGS':
-      return { ...state, aiSettingsOpen: !state.aiSettingsOpen };
-    case 'SET_AI_SETTINGS':
-      return { ...state, aiSettings: { ...state.aiSettings, ...action.settings } };
-    case 'SET_SPLIT_TAB':
-      return { ...state, splitTabId: action.tabId };
-    case 'SET_LLAMA_STATUS':
-      return { ...state, llamaStatus: action.status as any, llamaError: action.error ?? null };
+
+    // ─────────────────────── HARDWARE / SETTINGS ───────────────────────
+    case 'SET_HARDWARE':
+      return { ...state, hardware: action.hw };
+
+    case 'SET_SETTINGS':
+      return { ...state, settings: { ...state.settings, ...action.settings } };
+
+    // ─────────────────────── CURSOR ────────────────────────────────────
+    case 'SET_CURSOR':
+      return { ...state, cursorLine: action.line, cursorCol: action.col };
+
+    // ─────────────────────── CONTEXT MENU ──────────────────────────────
     case 'SET_CONTEXT_MENU':
       return { ...state, contextMenu: action.menu };
+
     default:
       return state;
   }

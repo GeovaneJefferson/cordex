@@ -7,22 +7,28 @@ interface UseTerminalOptions {
   onData?: (data: string) => void;
 }
 
-/**
- * Manages a single xterm.js + node-pty terminal instance.
- * Mount the returned `containerRef` on a div to render the terminal.
- *
- * Requires: npm install xterm xterm-addon-fit
- * And add to src/styles/index.css: @import 'xterm/css/xterm.css';
- */
 export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<any>(null);
+  const fitAddonRef = useRef<any>(null); // Save fit addon ref for manual external canvas resizing
   const cleanupFns = useRef<Array<() => void>>([]);
 
   const destroy = useCallback(async () => {
     cleanupFns.current.forEach(fn => fn());
     cleanupFns.current = [];
     await terminalService.destroy(id);
+  }, [id]);
+
+  // Expose sizing helper function up into React components
+  const fitTerminal = useCallback(() => {
+    if (fitAddonRef.current && termRef.current) {
+      try {
+        fitAddonRef.current.fit();
+        terminalService.resize(id, termRef.current.cols, termRef.current.rows);
+      } catch (err) {
+        console.warn("Terminal fit deferred:", err);
+      }
+    }
   }, [id]);
 
   useEffect(() => {
@@ -53,8 +59,12 @@ export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
         term.open(containerRef.current);
-        fitAddon.fit();
+        
+        fitAddonRef.current = fitAddon;
         termRef.current = term;
+
+        // Run early check configuration sizing options mapping
+        fitAddon.fit();
 
         const res = await terminalService.create(id, cwd ?? '', term.cols, term.rows);
         if (!res?.ok) {
@@ -76,10 +86,13 @@ export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
           term.writeln(`\r\n\x1b[90mProcess exited (${exitCode})\x1b[0m`);
         });
 
-        // Auto-resize
+        // Auto-resize observing layer
         const obs = new ResizeObserver(() => {
-          fitAddon.fit();
-          terminalService.resize(id, term.cols, term.rows);
+          // Only trigger fits if container has explicit physical volume dimensions
+          if (containerRef.current && containerRef.current.clientWidth > 0) {
+            fitAddon.fit();
+            terminalService.resize(id, term.cols, term.rows);
+          }
         });
         if (containerRef.current) obs.observe(containerRef.current);
 
@@ -108,5 +121,5 @@ export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
     };
   }, [id, cwd]);  // eslint-disable-line
 
-  return { containerRef, termRef, destroy };
+  return { containerRef, termRef, fitTerminal, destroy };
 }

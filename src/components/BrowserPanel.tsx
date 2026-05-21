@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
-// ── Device presets ─────────────────────────────────────────────────────────────
+// ── Device presets (unchanged) ─────────────────────────────────────────────
 interface Device {
   id: string;
   label: string;
@@ -25,15 +25,39 @@ const PHONE_DEVICES: Device[] = [
 ];
 
 const DESKTOP_PRESETS = [
-  { id: 'full',  label: 'Full',   width: 0    }, // 0 = fill container
+  { id: 'full',  label: 'Full',   width: 0    },
   { id: '1440',  label: '1440',   width: 1440 },
   { id: '1280',  label: '1280',   width: 1280 },
   { id: '1024',  label: '1024',   width: 1024 },
 ];
 
-const PREVIEW_URL = 'http://localhost:8081';
+const DEFAULT_URL = 'http://localhost:8081';
+const PROXY_BASE = 'http://localhost:8081/proxy?';   // adjust to your proxy endpoint
 
-// ── Phone chrome SVG ───────────────────────────────────────────────────────────
+// ── Phone chrome (unchanged) ───────────────────────────────────────────────
+const SideButtons: React.FC<{ landscape: boolean; isIos: boolean }> = ({ landscape, isIos }) => (
+  <>
+    <div style={{
+      position: 'absolute',
+      ...(landscape ? { top: -3, left: 100, width: 44, height: 3 } : { left: -3, top: 120, width: 3, height: 34 }),
+      background: isIos ? '#2a2a2a' : '#222',
+      borderRadius: 2,
+    }} />
+    <div style={{
+      position: 'absolute',
+      ...(landscape ? { top: -3, left: 160, width: 44, height: 3 } : { left: -3, top: 168, width: 3, height: 34 }),
+      background: isIos ? '#2a2a2a' : '#222',
+      borderRadius: 2,
+    }} />
+    <div style={{
+      position: 'absolute',
+      ...(landscape ? { bottom: -3, left: 120, width: 60, height: 3 } : { right: -3, top: 140, width: 3, height: 60 }),
+      background: isIos ? '#2a2a2a' : '#222',
+      borderRadius: 2,
+    }} />
+  </>
+);
+
 const PhoneFrame: React.FC<{
   device: Device;
   landscape: boolean;
@@ -52,7 +76,6 @@ const PhoneFrame: React.FC<{
       width: w,
       flexShrink: 0,
     }}>
-      {/* Outer shell */}
       <div style={{
         width: w,
         height: h,
@@ -62,10 +85,7 @@ const PhoneFrame: React.FC<{
         boxShadow: '0 0 0 1px #333, 0 0 0 2px #1a1a1a, 0 24px 64px rgba(0,0,0,0.55), 0 8px 20px rgba(0,0,0,0.4)',
         position: 'relative',
       }}>
-        {/* Side buttons */}
         <SideButtons landscape={landscape} isIos={isIos} />
-
-        {/* Inner screen area */}
         <div style={{
           width: '100%', height: '100%',
           borderRadius: borderR - 10,
@@ -73,7 +93,6 @@ const PhoneFrame: React.FC<{
           background: '#000',
           position: 'relative',
         }}>
-          {/* Camera hole / notch */}
           {!landscape && device.hasCameraHole && (
             <div style={{
               position: 'absolute', top: isIos ? 12 : 10,
@@ -93,13 +112,9 @@ const PhoneFrame: React.FC<{
               )}
             </div>
           )}
-
-          {/* Content */}
           <div style={{ position: 'absolute', inset: 0 }}>
             {children}
           </div>
-
-          {/* Home bar (iOS) */}
           {!landscape && device.hasHomeBar && (
             <div style={{
               position: 'absolute', bottom: 8, left: '50%',
@@ -116,80 +131,168 @@ const PhoneFrame: React.FC<{
   );
 };
 
-const SideButtons: React.FC<{ landscape: boolean; isIos: boolean }> = ({ landscape, isIos }) => (
-  <>
-    {/* Volume up */}
-    <div style={{
-      position: 'absolute',
-      ...(landscape ? { top: -3, left: 100, width: 44, height: 3 } : { left: -3, top: 120, width: 3, height: 34 }),
-      background: isIos ? '#2a2a2a' : '#222',
-      borderRadius: 2,
-    }} />
-    {/* Volume down */}
-    <div style={{
-      position: 'absolute',
-      ...(landscape ? { top: -3, left: 160, width: 44, height: 3 } : { left: -3, top: 168, width: 3, height: 34 }),
-      background: isIos ? '#2a2a2a' : '#222',
-      borderRadius: 2,
-    }} />
-    {/* Power */}
-    <div style={{
-      position: 'absolute',
-      ...(landscape ? { bottom: -3, left: 120, width: 60, height: 3 } : { right: -3, top: 140, width: 3, height: 60 }),
-      background: isIos ? '#2a2a2a' : '#222',
-      borderRadius: 2,
-    }} />
-  </>
-);
+// ── Editable URL bar (unchanged) ───────────────────────────────────────────
+const EditableUrlBar: React.FC<{
+  url: string;
+  onNavigate: (newUrl: string) => void;
+  onRefresh: () => void;
+  loading: boolean;
+}> = ({ url, onNavigate, onRefresh, loading }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(url);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-// ── URL bar ────────────────────────────────────────────────────────────────────
-const UrlBar: React.FC<{ url: string; onRefresh: () => void; loading: boolean }> = ({ url, onRefresh, loading }) => (
-  <div style={{
-    display: 'flex', alignItems: 'center', gap: 6,
-    background: '#f8fafc', border: '1px solid #e2e8f0',
-    borderRadius: 8, padding: '4px 8px', flex: 1, minWidth: 0,
-  }}>
-    <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#94a3b8', flexShrink: 0 }}>
-      {loading ? 'autorenew' : 'lock'}
-    </span>
-    <span style={{ fontSize: 11.5, color: '#64748b', flex: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-      {url}
-    </span>
-    <button onClick={onRefresh} title="Refresh"
-      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#94a3b8', flexShrink: 0 }}>
-      <span className={`material-symbols-outlined ${loading ? 'animate-spin' : ''}`} style={{ fontSize: 13 }}>refresh</span>
-    </button>
-  </div>
-);
+  useEffect(() => {
+    setEditValue(url);
+  }, [url]);
 
-// ── Main BrowserPanel ──────────────────────────────────────────────────────────
+  const commit = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== url) {
+      onNavigate(trimmed);
+    } else {
+      setEditValue(url);
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      commit();
+    } else if (e.key === 'Escape') {
+      setEditValue(url);
+      setIsEditing(false);
+    }
+  };
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      background: '#f8fafc', border: '1px solid #e2e8f0',
+      borderRadius: 8, padding: '4px 8px', flex: 1, minWidth: 0,
+    }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#94a3b8', flexShrink: 0 }}>
+        {loading ? 'autorenew' : 'lock'}
+      </span>
+      {isEditing ? (
+        <input
+          ref={inputRef}
+          type="text"
+          value={editValue}
+          onChange={e => setEditValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={handleKeyDown}
+          style={{
+            flex: 1,
+            border: 'none',
+            outline: 'none',
+            background: 'transparent',
+            fontSize: 11.5,
+            color: '#334155',
+            fontFamily: 'monospace',
+            padding: 0,
+            minWidth: 0,
+          }}
+          autoFocus
+        />
+      ) : (
+        <span
+          onClick={() => setIsEditing(true)}
+          title="Click to edit URL"
+          style={{
+            fontSize: 11.5,
+            color: '#64748b',
+            flex: 1,
+            textOverflow: 'ellipsis',
+            overflow: 'hidden',
+            whiteSpace: 'nowrap',
+            cursor: 'text',
+          }}
+        >
+          {url}
+        </span>
+      )}
+      <button onClick={onRefresh} title="Refresh"
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#94a3b8', flexShrink: 0 }}>
+        <span className={`material-symbols-outlined ${loading ? 'animate-spin' : ''}`} style={{ fontSize: 13 }}>refresh</span>
+      </button>
+    </div>
+  );
+};
+
+// ── Main BrowserPanel (with proxy support) ─────────────────────────────────
 interface BrowserPanelProps {
-  initialMode: 'phone' | 'desktop';
-  onClose: () => void;
+  mode: 'phone' | 'desktop';
   onModeChange: (mode: 'phone' | 'desktop') => void;
+  visible: boolean;
+  onClose: () => void;
 }
 
-export const BrowserPanel: React.FC<BrowserPanelProps> = ({ initialMode, onClose, onModeChange }) => {
-  const [mode,           setMode]           = useState<'phone' | 'desktop'>(initialMode);
+export const BrowserPanel: React.FC<BrowserPanelProps> = ({
+  mode,
+  onModeChange,
+  visible,
+  onClose,
+}) => {
   const [selectedDevice, setSelectedDevice] = useState<Device>(PHONE_DEVICES[0]);
   const [landscape,      setLandscape]      = useState(false);
-  const [desktopWidth,   setDesktopWidth]   = useState(0); // 0 = full
+  const [desktopWidth,   setDesktopWidth]   = useState(0);
   const [iframeKey,      setIframeKey]      = useState(0);
   const [loading,        setLoading]        = useState(true);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
+  const [currentUrl,     setCurrentUrl]     = useState(DEFAULT_URL);
+  const [hasError,       setHasError]       = useState(false);
+  const [useProxy,       setUseProxy]       = useState(true);  // toggle proxy on/off
+
   const containerRef  = useRef<HTMLDivElement>(null);
   const iframeRef     = useRef<HTMLIFrameElement>(null);
   const deviceMenuRef = useRef<HTMLDivElement>(null);
 
-  const refresh = () => { setIframeKey(k => k + 1); setLoading(true); };
+  // ── Helper: decide if URL is local ──────────────────────────────────────
+  const isLocalUrl = useCallback((url: string) => {
+    try {
+      const { hostname } = new URL(url);
+      return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // ── Build the final iframe src ──────────────────────────────────────────
+  const iframeSrc = (() => {
+    if (!useProxy || isLocalUrl(currentUrl)) {
+      return currentUrl;                     // localhost – load directly
+    }
+    // External URL – route through proxy
+    return `${PROXY_BASE}${encodeURIComponent(currentUrl)}`;
+  })();
+
+  const refresh = () => {
+    setIframeKey(k => k + 1);
+    setLoading(true);
+    setHasError(false);
+  };
+
+  const handleNavigate = useCallback((newUrl: string) => {
+    let url = newUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url;
+    }
+    setCurrentUrl(url);
+    setLoading(true);
+    setHasError(false);
+    setIframeKey(k => k + 1);
+  }, []);
+
+  const openInNewTab = () => {
+    window.open(currentUrl, '_blank', 'noopener,noreferrer');
+  };
 
   const switchMode = (m: 'phone' | 'desktop') => {
-    setMode(m);
     onModeChange(m);
     setLandscape(false);
   };
 
-  // Close device menu on outside click
   useEffect(() => {
     const fn = (e: MouseEvent) => {
       if (deviceMenuRef.current && !deviceMenuRef.current.contains(e.target as Node)) {
@@ -200,7 +303,6 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({ initialMode, onClose
     return () => document.removeEventListener('mousedown', fn);
   }, []);
 
-  // Calculate phone scale to fit the container
   const [containerSize, setContainerSize] = useState({ w: 600, h: 700 });
   useEffect(() => {
     if (!containerRef.current) return;
@@ -214,7 +316,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({ initialMode, onClose
 
   const phoneW = landscape ? selectedDevice.height : selectedDevice.width;
   const phoneH = landscape ? selectedDevice.width  : selectedDevice.height;
-  const CHROME_H = 20; // phone frame chrome (padding)
+  const CHROME_H = 20;
   const scale = Math.min(
     (containerSize.w - 48) / (phoneW + CHROME_H * 2),
     (containerSize.h - 72) / (phoneH + CHROME_H * 2),
@@ -236,10 +338,71 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({ initialMode, onClose
           maxWidth: '100%',
         };
 
+  const showLoading = visible && loading && !hasError;
+
+  const renderErrorFallback = () => (
+    <div style={{
+      position: 'absolute', inset: 0,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      background: '#fff',
+      gap: 12,
+      padding: 24,
+      textAlign: 'center',
+    }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#94a3b8' }}>error_outline</span>
+      <div style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>
+        This page cannot be embedded
+      </div>
+      <div style={{ fontSize: 11.5, color: '#94a3b8', maxWidth: 280, lineHeight: 1.5 }}>
+        The website may have blocked iframe embedding. Try enabling the proxy or open in a new tab.
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button onClick={openInNewTab}
+          style={{
+            padding: '6px 14px',
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            background: 'white',
+            color: '#0f172a',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>open_in_new</span>
+          Open in new tab
+        </button>
+        {!isLocalUrl(currentUrl) && (
+          <button onClick={() => setUseProxy(v => !v)}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 8,
+              border: '1px solid #e2e8f0',
+              background: useProxy ? '#f0f9ff' : 'white',
+              color: useProxy ? '#0284c7' : '#64748b',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
+              {useProxy ? 'toggle_on' : 'toggle_off'}
+            </span>
+            Proxy {useProxy ? 'ON' : 'OFF'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc', userSelect: 'none' }}>
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+      {/* ── Toolbar ───────────────────────────────────────────────────────── */}
       <div style={{
         height: 40,
         display: 'flex', alignItems: 'center', gap: 6,
@@ -364,17 +527,59 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({ initialMode, onClose
           }
         </div>
 
-        {/* URL bar */}
-        <UrlBar url={PREVIEW_URL} onRefresh={refresh} loading={loading} />
+        {/* Editable URL bar */}
+        <EditableUrlBar
+          url={currentUrl}
+          onNavigate={handleNavigate}
+          onRefresh={refresh}
+          loading={loading}
+        />
 
-        {/* Close */}
+        {/* Proxy toggle button (icon) */}
+        <button
+          onClick={() => setUseProxy(v => !v)}
+          title={useProxy ? 'Proxy ON – click to disable' : 'Proxy OFF – click to enable'}
+          style={{
+            padding: 4,
+            borderRadius: 7,
+            border: '1px solid #e2e8f0',
+            background: useProxy ? '#e0f2fe' : 'white',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            color: useProxy ? '#0284c7' : '#64748b',
+            flexShrink: 0,
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+            {useProxy ? 'cloud' : 'cloud_off'}
+          </span>
+        </button>
+
+        {/* Open in new tab button */}
+        <button onClick={openInNewTab} title="Open in new tab"
+          style={{
+            padding: 4,
+            borderRadius: 7,
+            border: '1px solid #e2e8f0',
+            background: 'white',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            color: '#64748b',
+            flexShrink: 0,
+          }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>open_in_new</span>
+        </button>
+
+        {/* Close button */}
         <button onClick={onClose} title="Close preview"
           style={{ padding: 4, borderRadius: 7, border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', flexShrink: 0, display: 'flex' }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
         </button>
       </div>
 
-      {/* ── Preview area ─────────────────────────────────────────────────────── */}
+      {/* ── Preview area ─────────────────────────────────────────────────── */}
       <div ref={containerRef} style={{
         flex: 1, overflow: 'hidden',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
@@ -382,39 +587,51 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({ initialMode, onClose
         background: mode === 'phone' ? '#e2e8f0' : 'white',
         position: 'relative',
       }}>
-
-        {mode === 'phone' ? (
-          <PhoneFrame device={selectedDevice} landscape={landscape} scale={scale}>
-            <iframe
-              key={iframeKey}
-              ref={iframeRef}
-              src={PREVIEW_URL}
-              style={iframeStyle}
-              onLoad={() => setLoading(false)}
-              title="Preview"
-            />
-          </PhoneFrame>
+        {hasError ? (
+          renderErrorFallback()
         ) : (
-          <div style={{
-            width: desktopWidth ? Math.min(desktopWidth, containerSize.w) : '100%',
-            height: '100%',
-            overflow: 'hidden',
-            background: 'white',
-            boxShadow: desktopWidth ? '0 0 0 1px #e2e8f0' : 'none',
-          }}>
-            <iframe
-              key={iframeKey}
-              ref={iframeRef}
-              src={PREVIEW_URL}
-              style={iframeStyle}
-              onLoad={() => setLoading(false)}
-              title="Preview"
-            />
-          </div>
+          <>
+            {mode === 'phone' ? (
+              <PhoneFrame device={selectedDevice} landscape={landscape} scale={scale}>
+                <iframe
+                  key={iframeKey}
+                  ref={iframeRef}
+                  src={iframeSrc}
+                  style={iframeStyle}
+                  onLoad={() => setLoading(false)}
+                  onError={() => {
+                    setLoading(false);
+                    setHasError(true);
+                  }}
+                  title="Preview"
+                />
+              </PhoneFrame>
+            ) : (
+              <div style={{
+                width: desktopWidth ? Math.min(desktopWidth, containerSize.w) : '100%',
+                height: '100%',
+                overflow: 'hidden',
+                background: 'white',
+                boxShadow: desktopWidth ? '0 0 0 1px #e2e8f0' : 'none',
+              }}>
+                <iframe
+                  key={iframeKey}
+                  ref={iframeRef}
+                  src={iframeSrc}
+                  style={iframeStyle}
+                  onLoad={() => setLoading(false)}
+                  onError={() => {
+                    setLoading(false);
+                    setHasError(true);
+                  }}
+                  title="Preview"
+                />
+              </div>
+            )}
+          </>
         )}
 
-        {/* Loading overlay */}
-        {loading && (
+        {showLoading && (
           <div style={{
             position: 'absolute', inset: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -422,7 +639,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({ initialMode, onClose
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
               <span className="material-symbols-outlined animate-spin" style={{ fontSize: 24, color: '#94a3b8' }}>autorenew</span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>Connecting to {PREVIEW_URL}</span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>Loading {currentUrl}</span>
             </div>
           </div>
         )}

@@ -2,10 +2,11 @@ import React, { useRef, useState, useCallback } from 'react';
 import { useAppState } from '../store/AppContext';
 import { CodeEditor } from './CodeEditor';
 import { FlowView } from './FlowView';
+import { Tab } from '../types';   
 
 const PaneContent: React.FC<{ tabId: string }> = ({ tabId }) => {
   const { state } = useAppState();
-  const tab = state.tabs.find(t => t.id === tabId);
+  const tab = state.tabs.find((t: Tab) => t.id === tabId);
   if (!tab) return null;
   if (tab.tabType === 'flow') return <FlowView flowTab={tab} />;
   return <CodeEditor tabId={tabId} />;
@@ -57,8 +58,8 @@ const DropZoneOverlay: React.FC<{ zone: DropZone; onDrop: (zone: DropZone, tabId
 
 export const SplitEditor: React.FC = () => {
   const { state, dispatch } = useAppState();
-  const activeTab = state.tabs.find(t => t.id === state.activeTabId);
-  const splitTab  = state.tabs.find(t => t.id === state.splitTabId);
+  const activeTab = state.tabs.find((t: Tab) => t.id === state.activeTabId);
+  const splitTab  = state.tabs.find((t: Tab) => t.id === state.splitTabId);
 
   const containerRef  = useRef<HTMLDivElement>(null);
   const [splitRatio,  setSplitRatio]  = useState(0.5);

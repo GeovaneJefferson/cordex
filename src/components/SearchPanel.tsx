@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppState } from '../store/AppContext';
 import { useFileTree } from '../hooks/useFileTree';
+import { Tab } from '../types';  
 
 const Cordex = (window as any).Cordex;
 
@@ -83,12 +84,13 @@ export const SearchPanel: React.FC = () => {
       const esc   = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const pat   = new RegExp(useRegex ? query : (wholeWord ? `\\b${esc}\\b` : esc), flags);
       const next  = content.content.replace(pat, replaceVal);
+      
       await Cordex?.fs?.writeFile?.(filePath, next);
 
       // If the file is open as a tab, update it in state too
-      const tab = state.tabs.find(t => t.path === filePath);
+      const tab = state.tabs.find((t: Tab) => t.path === filePath); 
       if (tab) dispatch({ type: 'UPDATE_TAB_CONTENT', id: tab.id, content: next });
-
+      
       // Re-run search to refresh results
       await runSearch(query);
     } catch {}
@@ -100,7 +102,7 @@ export const SearchPanel: React.FC = () => {
 
     // ── open file and jump to line ────────────────────────────────────────────
     const openFile = async (filePath: string) => {
-      const tab = state.tabs.find(t => t.path === filePath);
+      const tab = state.tabs.find((t: Tab) => t.path === filePath);   // typed
       if (tab) {
         dispatch({ type: 'SET_ACTIVE_TAB', id: tab.id });
       } else {

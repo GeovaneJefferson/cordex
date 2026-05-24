@@ -13,7 +13,7 @@ from PyQt6.QtGui import QFileSystemModel, QFont
 class OllamaWorker(QThread):
     response_received = Signal(str)
     error_occurred = Signal(str)
-
+    
     def __init__(self, prompt, model_name="qwen2.5-coder:3b"):
         super().__init__()
         self.prompt = prompt

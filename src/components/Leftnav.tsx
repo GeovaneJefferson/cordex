@@ -28,7 +28,7 @@ const NavBtn: React.FC<NavBtnProps> = ({ icon, title, active, onClick }) => (
 export const LeftNav: React.FC = () => {
   const { state, dispatch } = useAppState();
 
-  const handleNav = (panel: 'explorer' | 'search') => {
+  const handleNav = (panel: 'explorer' | 'search' | 'git') => {
     if (state.sidebarVisible && state.sidebarPanel === panel) {
       dispatch({ type: 'TOGGLE_SIDEBAR' });
     } else {
@@ -36,7 +36,7 @@ export const LeftNav: React.FC = () => {
     }
   };
 
-  const isActive = (panel: 'explorer' | 'search') =>
+  const isActive = (panel: 'explorer' | 'search' | 'git') =>
     state.sidebarVisible && state.sidebarPanel === panel;
 
   return (
@@ -63,7 +63,12 @@ export const LeftNav: React.FC = () => {
           active={isActive('search')}
           onClick={() => handleNav('search')}
         />
-        <NavBtn icon="account_tree" title="Source Control" />
+        <NavBtn
+          icon="account_tree"
+          title="Source Control"
+          active={isActive('git')}
+          onClick={() => handleNav('git')}
+        />
         <NavBtn
           icon="terminal"
           title="Toggle Terminal"

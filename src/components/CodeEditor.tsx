@@ -2,8 +2,9 @@ import React, { useRef, useEffect, useState } from 'react';
 import * as monaco from 'monaco-editor';
 import { useAppState } from '../store/AppContext';
 import { themes } from '../themes';
+import { Tab } from '../types';
 
-// Register all themes once at module level — never inside a component
+// ── Theme registration ──────────────────────────────────────────────────
 let _themesReady = false;
 function ensureThemes() {
   if (_themesReady) return;
@@ -11,6 +12,56 @@ function ensureThemes() {
   themes.forEach(t => monaco.editor.defineTheme(t.id, t.data));
 }
 
+// ── GDScript registration ───────────────────────────────────────────────
+let _gdscriptReady = false;
+function ensureGDScript() {
+  if (_gdscriptReady) return;
+  _gdscriptReady = true;
+
+  monaco.languages.register({ id: 'gdscript' });
+
+  monaco.languages.setMonarchTokensProvider('gdscript', {
+    tokenizer: {
+      root: [
+        [/^\s*#.*/, 'comment'],
+        [/\b(?:func|class|extends|return|if|elif|else|for|while|break|continue|pass|self|is|in|as|onready|on|export|signal|static|tool|extends|var|const|enum|match)\b/, 'keyword'],
+        [/\b(?:true|false|null)\b/, 'keyword'],
+        [/"(?:[^"\\]|\\.)*"/, 'string'],
+        [/'(?:[^'\\]|\\.)*'/, 'string'],
+        [/\d+\.?\d*(?:e[+-]?\d+)?/, 'number'],
+        [/[{}()\[\]]/, 'delimiter'],
+        [/[a-zA-Z_]\w*/, 'identifier'],
+        [/[+\-*/<>=!&|^~%]+/, 'operator'],
+      ],
+    },
+  });
+
+  monaco.languages.setLanguageConfiguration('gdscript', {
+    comments: { lineComment: '#' },
+    brackets: [
+      ['{', '}'],
+      ['[', ']'],
+      ['(', ')'],
+    ],
+    autoClosingPairs: [
+      { open: '{', close: '}' },
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+    ],
+    surroundingPairs: [
+      { open: '{', close: '}' },
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+    ],
+  });
+}
+ensureGDScript();
+
+// ── Local storage helpers ───────────────────────────────────────────────
 const THEME_KEY    = 'cordex_editor_theme';
 const FONTSIZE_KEY = 'cordex_editor_fontSize';
 
@@ -23,17 +74,34 @@ function storedFontSize() {
   return n >= 8 && n <= 28 ? n : 13;
 }
 
+// ── Component ───────────────────────────────────────────────────────────
 export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
   const { state, dispatch } = useAppState();
-  const tab = state.tabs.find(t => t.id === tabId);
+  const tab = state.tabs.find((t: Tab) => t.id === tabId);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef   = useRef<HTMLDivElement>(null);
   const editorRef    = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const ignoreRef    = useRef(false);
   const themeRef     = useRef(storedTheme());
   const fontRef      = useRef(storedFontSize());
 
-  // ── Font size via keyboard — never causes editor recreate ────────────────
+  // For integer‑pixel layout fix
+  const [wrapperSize, setWrapperSize] = useState({ width: 0, height: 0 });
+
+  // Observe the wrapper size
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(entries => {
+      const rect = entries[0]?.contentRect;
+      if (rect) setWrapperSize({ width: rect.width, height: rect.height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // ── Font size via keyboard ──────────────────────────────────────────
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -54,14 +122,12 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
     return () => window.removeEventListener('keydown', fn);
   }, []);
 
-  // ── Create editor — ONLY when tabId or language changes ──────────────────
-  // CRITICAL: Do NOT include tab.content in deps — causes flicker + selection loss
+  // ── Create editor ──────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || !tab) return;
 
     ensureThemes();
 
-    // Dispose previous
     editorRef.current?.dispose();
     editorRef.current = null;
 
@@ -71,40 +137,37 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
       theme:    themeRef.current,
       fontSize: fontRef.current,
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-      fontLigatures: true,
+      fontLigatures: false,            // helps with selection precision
       lineNumbers: 'on',
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
       automaticLayout: true,
+      matchBrackets: 'never',          // avoid micro‑reflows while selecting
       tabSize: 2,
       wordWrap: 'off',
-      // Selection quality
       selectionHighlight: true,
       occurrencesHighlight: 'singleFile',
       renderWhitespace: 'selection',
-      // Smooth feel
       cursorBlinking: 'smooth',
-      cursorSmoothCaretAnimation: 'on',
-      smoothScrolling: true,
-      // No focus stealing on hover / mouse events
+      cursorSmoothCaretAnimation: 'off',  // BUG FIX: 'on' causes jumpy bottom-to-top selection
+      smoothScrolling: false,             // BUG FIX: interferes with drag selection
       mouseWheelZoom: false,
-      // Scrollbars
+      fixedOverflowWidgets: true,         // keeps widgets inside editor bounds
       scrollbar: {
-        vertical: 'auto', horizontal: 'auto',
+        vertical: 'auto',
+        horizontal: 'auto',
         useShadows: false,
-        verticalScrollbarSize: 6, horizontalScrollbarSize: 6,
+        verticalScrollbarSize: 6,
+        horizontalScrollbarSize: 6,
       },
-      // Important: keep these false to avoid drag fighting with SplitEditor
       dragAndDrop: false,
-      // Fix: don't let Monaco intercept middle-click pan
       multiCursorModifier: 'ctrlCmd',
     });
 
-    // Ensure theme is applied after creation
     monaco.editor.setTheme(themeRef.current);
     editorRef.current = editor;
 
-    // Content → store (debounced via internal Monaco batching)
+    // User edits → store
     const s1 = editor.onDidChangeModelContent(() => {
       if (ignoreRef.current) return;
       dispatch({ type: 'UPDATE_TAB_CONTENT', id: tabId, content: editor.getValue() });
@@ -115,16 +178,49 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
       dispatch({ type: 'SET_CURSOR', line: e.position.lineNumber, col: e.position.column });
     });
 
-    // Ctrl+S → save to disk
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      const t = state.tabs.find(x => x.id === tabId);
+    // Ctrl+S – save with Save As support
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+      const t = state.tabs.find((x: Tab) => x.id === tabId);
       if (!t) return;
-      (window as any).Cordex?.fs?.writeFile?.(t.path, editor.getValue())?.then(() => {
+      const content = editor.getValue();
+
+      // BUG FIX: preserve scroll position before any async dispatch
+      const scrollTop  = editor.getScrollTop();
+      const scrollLeft = editor.getScrollLeft();
+      const restoreScroll = () => requestAnimationFrame(() => {
+        editorRef.current?.setScrollTop(scrollTop);
+        editorRef.current?.setScrollLeft(scrollLeft);
+      });
+
+      if (t.path.startsWith('untitled::') || !t.path) {
+        const newPath = await (window as any).Cordex?.fs?.saveAs?.(t.name);
+        if (!newPath) return;
+        const fileName = newPath.split('/').pop() ?? 'Untitled';
+        dispatch({ type: 'UPDATE_TAB_PATH', id: t.id, path: newPath, name: fileName });
+        await (window as any).Cordex?.fs?.writeFile?.(newPath, content);
+        dispatch({ type: 'MARK_TAB_SAVED', id: t.id });
+        (window as any).Cordex?.history?.save?.({ filePath: newPath, content });
+        (window as any).Cordex?.ai?.embedUpdateFile?.(newPath, content);
+        const root = (window as any).__cordexRoot ?? state.projectRoot;
+        if (root && newPath.startsWith(root)) {
+          try {
+            const result = await (window as any).Cordex?.fs?.readDir?.(root);
+            if (result?.ok) dispatch({ type: 'SET_FILE_TREE', tree: result.tree });
+          } catch (e) { console.error('Failed to refresh file tree:', e); }
+        }
+        restoreScroll();
+        return;
+      }
+
+      (window as any).Cordex?.fs?.writeFile?.(t.path, content)?.then(() => {
         dispatch({ type: 'MARK_TAB_SAVED', id: tabId });
+        (window as any).Cordex?.history?.save?.({ filePath: t.path, content });
+        (window as any).Cordex?.ai?.embedUpdateFile?.(t.path, content);
+        restoreScroll();
       });
     });
 
-    // Ctrl+/ or Ctrl+Shift+7 → comment/uncomment
+    // Toggle line comment
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
       editor.getAction('editor.action.commentLine')?.run();
     });
@@ -132,54 +228,134 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
       editor.getAction('editor.action.commentLine')?.run();
     });
 
-    // Do NOT call editor.focus() here — it causes the "Canceled" dispose loop
-    // Focus is handled by the user clicking the pane
-
     return () => {
       s1.dispose();
       s2.dispose();
       editor.dispose();
       editorRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabId, tab?.language]); // ← ONLY tabId + language, never content
+  }, [tabId, tab?.language]);
 
-  // ── Sync AI/external content changes without recreating editor ───────────
+  // ── Sync external changes (AI / file reload) ─────────────────────────
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor || !tab) return;
     const current = editor.getValue();
     if (current === tab.content) return;
-    // Preserve cursor + selection when applying external change
-    ignoreRef.current = true;
-    const pos   = editor.getPosition();
-    const sel   = editor.getSelection();
+
     const model = editor.getModel();
-    if (model) {
-      model.pushEditOperations(
-        [],
-        [{ range: model.getFullModelRange(), text: tab.content }],
-        () => null
-      );
-    }
-    if (pos)  editor.setPosition(pos);
-    if (sel)  editor.setSelection(sel);
+    if (!model) return;
+
+    // BUG FIX: ALWAYS preserve scroll position — model.setValue() resets to top
+    const scrollTop  = editor.getScrollTop();
+    const scrollLeft = editor.getScrollLeft();
+
+    ignoreRef.current = true;
+    const pos = editor.getPosition();
+    const sel = editor.getSelection();
+
+    // Use pushEditOperations on both paths — it preserves undo history
+    // and never resets the viewport (unlike model.setValue)
+    model.pushEditOperations(
+      [],
+      [{ range: model.getFullModelRange(), text: tab.content }],
+      () => null
+    );
+
+    if (pos) editor.setPosition(pos);
+    if (sel) editor.setSelection(sel);
+    editor.setScrollTop(scrollTop);
+    editor.setScrollLeft(scrollLeft);
     ignoreRef.current = false;
   }, [tab?.content]);
 
+  // ── Integer pixel dimensions ─────────────────────────────────────────
+  const width  = wrapperSize.width  > 0 ? `${Math.floor(wrapperSize.width)}px`  : '100%';
+  const height = wrapperSize.height > 0 ? `${Math.floor(wrapperSize.height)}px` : '100%';
+
   return (
-    <div className="flex-1 relative min-h-0">
-      <div ref={containerRef} className="absolute inset-0" />
+    <div className="flex-1 relative min-h-0" ref={wrapperRef}>
+      <div
+        ref={containerRef}
+        className="absolute inset-0"
+        style={{ width, height }}
+      />
     </div>
   );
 };
 
+// ── Language mapping ────────────────────────────────────────────────────
 function mapLang(lang: string): string {
   const map: Record<string, string> = {
     typescript:'typescript', tsx:'typescript', javascript:'javascript', jsx:'javascript',
+    cjs:'javascript',     // BUG FIX: .cjs was falling through to plaintext
     python:'python', rust:'rust', cpp:'cpp', c:'c', go:'go', java:'java',
     css:'css', scss:'scss', json:'json', html:'html', markdown:'markdown',
     shell:'shell', yaml:'yaml', toml:'toml', rb:'ruby', php:'php',
+    gdscript:'gdscript',
+    gd:'gdscript',        // BUG FIX: .gd files → GDScript highlighting
   };
   return map[lang] ?? 'plaintext';
 }
+
+// ── Ghost autocomplete (FIM inline completions) ─────────────────────────
+// Uses qwen2.5-coder:1.5b-base via the aiRouter IPC.
+// Registered once; safe to call multiple times (idempotent).
+let _ghostProvider: monaco.IDisposable | null = null;
+let _ghostTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function registerGhostAutocomplete(): void {
+  if (_ghostProvider) return;
+
+  _ghostProvider = monaco.languages.registerInlineCompletionsProvider('*', {
+    async provideInlineCompletions(model, position, _ctx, token) {
+      // Skip trivially short lines
+      const lineSoFar = model.getLineContent(position.lineNumber)
+        .slice(0, position.column - 1).trimEnd();
+      if (lineSoFar.length < 3) return { items: [] };
+
+      // 300 ms debounce — wait for user to stop typing
+      await new Promise<void>(res => {
+        if (_ghostTimer) clearTimeout(_ghostTimer);
+        _ghostTimer = setTimeout(res, 300);
+      });
+      if (token.isCancellationRequested) return { items: [] };
+
+      // Context: up to 40 lines before + 5 after cursor
+      const lnBefore = Math.max(1, position.lineNumber - 40);
+      const lnAfter  = Math.min(model.getLineCount(), position.lineNumber + 5);
+
+      const before = model.getValueInRange({
+        startLineNumber: lnBefore, startColumn: 1,
+        endLineNumber:   position.lineNumber, endColumn: position.column,
+      });
+      const after = model.getValueInRange({
+        startLineNumber: position.lineNumber, startColumn: position.column,
+        endLineNumber:   lnAfter, endColumn: model.getLineMaxColumn(lnAfter),
+      });
+
+      try {
+        const result = await (window as any).Cordex?.ai?.autocomplete?.({
+          before, after, language: model.getLanguageId(),
+        });
+        if (!result?.ok || !result.text?.trim()) return { items: [] };
+
+        return {
+          items: [{
+            insertText: result.text,
+            range: new monaco.Range(
+              position.lineNumber, position.column,
+              position.lineNumber, position.column
+            ),
+          }],
+        };
+      } catch {
+        return { items: [] };
+      }
+    },
+    freeInlineCompletions() {},
+  });
+}
+
+// Auto-register on module load
+registerGhostAutocomplete();

@@ -1,6 +1,8 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useAppState } from '../store/AppContext';
 import { getFileIcon } from '../utils/fileIcons';
+import { Tab } from '../types';
+import { terminalService } from '../services/terminalService';
 
 const Cordex = (window as any).Cordex;
 
@@ -12,7 +14,7 @@ interface TabContextMenu {
 
 export const TabBar: React.FC = () => {
   const { state, dispatch } = useAppState();
-  const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+  const activeTab = state.tabs.find((t: Tab) => t.id === state.activeTabId);
 
   const [ctxMenu,   setCtxMenu]   = useState<TabContextMenu | null>(null);
   const [dragSrc,   setDragSrc]   = useState<string | null>(null);
@@ -33,31 +35,58 @@ export const TabBar: React.FC = () => {
 
   const handleRun = () => {
     if (!activeTab || activeTab.tabType === 'flow') return;
+
     const cmds: Record<string, string> = {
-      python: `python3 "${activeTab.path}"`, javascript: `node "${activeTab.path}"`,
-      typescript: `npx ts-node "${activeTab.path}"`, rust: `cargo run`,
-      shell: `bash "${activeTab.path}"`, go: `go run "${activeTab.path}"`,
+      python: `python3 "${activeTab.path}"`,
+      javascript: `node "${activeTab.path}"`,
+      typescript: `npx ts-node "${activeTab.path}"`,
+      rust: `cargo run`,
+      shell: `bash "${activeTab.path}"`,
+      go: `go run "${activeTab.path}"`,
     };
     const cmd = cmds[activeTab.language] ?? `echo "Cannot run ${activeTab.language} directly"`;
-    if (!state.terminalVisible) dispatch({ type: 'TOGGLE_TERMINAL' });
-    setTimeout(() => Cordex?.terminal?.write?.('main-terminal', cmd + '\r'), 300);
+
+    // Append a visible confirmation that the command was executed
+    const fullCommand = `${cmd}; echo "--- Command finished ---"\r`;
+
+    const send = () => {
+      const termId = (window as any).__terminalId ?? 'main-terminal';
+      try {
+        terminalService.write(termId, fullCommand);
+        console.log(`Command sent to terminal "${termId}": ${cmd}`);
+      } catch (e) {
+        console.error('terminalService.write failed', e);
+      }
+    };
+
+    if (!state.terminalVisible) {
+      dispatch({ type: 'TOGGLE_TERMINAL' });
+      // Wait a bit more for the terminal panel + PTY to fully initialise
+      setTimeout(send, 800);
+    } else {
+      send();
+    }
   };
 
   const closeTab  = useCallback((id: string) => dispatch({ type: 'REMOVE_TAB', id }), [dispatch]);
-  const closeOthers = (id: string) => state.tabs.filter(t => t.id !== id).forEach(t => dispatch({ type: 'REMOVE_TAB', id: t.id }));
-  const closeAll  = () => [...state.tabs].forEach(t => dispatch({ type: 'REMOVE_TAB', id: t.id }));
+  const closeOthers = (id: string) => {
+    state.tabs.filter((t: Tab) => t.id !== id).forEach((t: Tab) => dispatch({ type: 'REMOVE_TAB', id: t.id }));
+  };
+  const closeAll  = () => {
+    [...state.tabs].forEach((t: Tab) => dispatch({ type: 'REMOVE_TAB', id: t.id }));
+  };
   const closeRight = (id: string) => {
-    const idx = state.tabs.findIndex(t => t.id === id);
-    state.tabs.slice(idx + 1).forEach(t => dispatch({ type: 'REMOVE_TAB', id: t.id }));
+    const idx = state.tabs.findIndex((t: Tab) => t.id === id);
+    state.tabs.slice(idx + 1).forEach((t: Tab) => dispatch({ type: 'REMOVE_TAB', id: t.id }));
   };
 
   const copyPath = (id: string) => {
-    const tab = state.tabs.find(t => t.id === id);
+    const tab = state.tabs.find((t: Tab) => t.id === id);
     if (tab?.path) navigator.clipboard.writeText(tab.path);
   };
 
   const revealInExplorer = (id: string) => {
-    const tab = state.tabs.find(t => t.id === id);
+    const tab = state.tabs.find((t: Tab) => t.id === id);
     if (tab?.path) Cordex?.fs?.revealInExplorer?.(tab.path);
   };
 
@@ -78,7 +107,6 @@ export const TabBar: React.FC = () => {
     const srcId = e.dataTransfer.getData('application/x-cordex-tab');
     if (!srcId || srcId === targetId) { setDragSrc(null); setDragOver(null); return; }
 
-    // Only reorder if same tab bar (no file path prefix)
     if (!srcId.includes('::') && !targetId.includes('::')) {
       dispatch({ type: 'REORDER_TABS', srcId, targetId });
     }
@@ -92,7 +120,7 @@ export const TabBar: React.FC = () => {
       <div className="flex h-9 border-b border-gray-100 bg-[#FAFAFA] flex-shrink-0">
         {/* Scrollable tabs */}
         <div className="flex flex-1 overflow-x-auto hide-scrollbar">
-          {state.tabs.map(tab => {
+          {state.tabs.map((tab: Tab) => {
             const isActive = tab.id === state.activeTabId;
             const isSplit  = tab.id === state.splitTabId;
             const isFlow   = tab.tabType === 'flow';
@@ -146,7 +174,7 @@ export const TabBar: React.FC = () => {
               onClick={() => {
                 if (state.splitTabId) dispatch({ type: 'SET_SPLIT_TAB', tabId: null });
                 else {
-                  const other = state.tabs.find(t => t.id !== state.activeTabId);
+                  const other = state.tabs.find((t: Tab) => t.id !== state.activeTabId);
                   if (other) dispatch({ type: 'SET_SPLIT_TAB', tabId: other.id });
                 }
               }}
@@ -163,7 +191,7 @@ export const TabBar: React.FC = () => {
         )}
       </div>
 
-      {/* ── Tab context menu ─────────────────────────────────────────────────── */}
+      {/* ── Tab context menu (unchanged) ────────────────────────────────────── */}
       {ctxMenu && (
         <>
           <div className="fixed inset-0 z-[199]" onClick={() => setCtxMenu(null)} />
@@ -177,8 +205,8 @@ export const TabBar: React.FC = () => {
             className="fixed z-[200] bg-white border border-gray-200 rounded-lg shadow-2xl py-1 w-52 text-[12px] font-medium text-gray-700 select-none"
           >
             {(() => {
-              const tab = state.tabs.find(t => t.id === ctxMenu.tabId);
-              const idx = state.tabs.findIndex(t => t.id === ctxMenu.tabId);
+              const tab = state.tabs.find((t: Tab) => t.id === ctxMenu.tabId);
+              const idx = state.tabs.findIndex((t: Tab) => t.id === ctxMenu.tabId);
               return (
                 <>
                   <CtxItem icon="close" label="Close" shortcut="Ctrl+W"

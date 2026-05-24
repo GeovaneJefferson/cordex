@@ -32,7 +32,7 @@ const DESKTOP_PRESETS = [
 ];
 
 const DEFAULT_URL = 'http://localhost:8081';
-const PROXY_BASE = 'http://localhost:8081/proxy?';   // adjust to your proxy endpoint
+const PROXY_BASE = 'http://localhost:8081/proxy?';
 
 // ── Phone chrome (unchanged) ───────────────────────────────────────────────
 const SideButtons: React.FC<{ landscape: boolean; isIos: boolean }> = ({ landscape, isIos }) => (
@@ -148,21 +148,14 @@ const EditableUrlBar: React.FC<{
 
   const commit = () => {
     const trimmed = editValue.trim();
-    if (trimmed && trimmed !== url) {
-      onNavigate(trimmed);
-    } else {
-      setEditValue(url);
-    }
+    if (trimmed && trimmed !== url) onNavigate(trimmed);
+    else setEditValue(url);
     setIsEditing(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      commit();
-    } else if (e.key === 'Escape') {
-      setEditValue(url);
-      setIsEditing(false);
-    }
+    if (e.key === 'Enter') commit();
+    else if (e.key === 'Escape') { setEditValue(url); setIsEditing(false); }
   };
 
   return (
@@ -183,15 +176,8 @@ const EditableUrlBar: React.FC<{
           onBlur={commit}
           onKeyDown={handleKeyDown}
           style={{
-            flex: 1,
-            border: 'none',
-            outline: 'none',
-            background: 'transparent',
-            fontSize: 11.5,
-            color: '#334155',
-            fontFamily: 'monospace',
-            padding: 0,
-            minWidth: 0,
+            flex: 1, border: 'none', outline: 'none', background: 'transparent',
+            fontSize: 11.5, color: '#334155', fontFamily: 'monospace', padding: 0, minWidth: 0,
           }}
           autoFocus
         />
@@ -200,13 +186,8 @@ const EditableUrlBar: React.FC<{
           onClick={() => setIsEditing(true)}
           title="Click to edit URL"
           style={{
-            fontSize: 11.5,
-            color: '#64748b',
-            flex: 1,
-            textOverflow: 'ellipsis',
-            overflow: 'hidden',
-            whiteSpace: 'nowrap',
-            cursor: 'text',
+            fontSize: 11.5, color: '#64748b', flex: 1,
+            textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: 'text',
           }}
         >
           {url}
@@ -220,7 +201,7 @@ const EditableUrlBar: React.FC<{
   );
 };
 
-// ── Main BrowserPanel (with proxy support) ─────────────────────────────────
+// ── Main BrowserPanel with drag‑to‑resize for desktop ───────────────────────
 interface BrowserPanelProps {
   mode: 'phone' | 'desktop';
   onModeChange: (mode: 'phone' | 'desktop') => void;
@@ -235,35 +216,33 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   onClose,
 }) => {
   const [selectedDevice, setSelectedDevice] = useState<Device>(PHONE_DEVICES[0]);
-  const [landscape,      setLandscape]      = useState(false);
-  const [desktopWidth,   setDesktopWidth]   = useState(0);
-  const [iframeKey,      setIframeKey]      = useState(0);
-  const [loading,        setLoading]        = useState(true);
+  const [landscape, setLandscape] = useState(false);
+  const [desktopWidth, setDesktopWidth] = useState(0);
+  const [isDraggingWidth, setIsDraggingWidth] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
-  const [currentUrl,     setCurrentUrl]     = useState(DEFAULT_URL);
-  const [hasError,       setHasError]       = useState(false);
-  const [useProxy,       setUseProxy]       = useState(true);  // toggle proxy on/off
+  const [currentUrl, setCurrentUrl] = useState(DEFAULT_URL);
+  const [hasError, setHasError] = useState(false);
+  const [useProxy, setUseProxy] = useState(true);
 
-  const containerRef  = useRef<HTMLDivElement>(null);
-  const iframeRef     = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const deviceMenuRef = useRef<HTMLDivElement>(null);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
 
-  // ── Helper: decide if URL is local ──────────────────────────────────────
+  // ── Helper: check if URL is local ──────────────────────────────────────
   const isLocalUrl = useCallback((url: string) => {
     try {
       const { hostname } = new URL(url);
       return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-    } catch {
-      return false;
-    }
+    } catch { return false; }
   }, []);
 
-  // ── Build the final iframe src ──────────────────────────────────────────
+  // ── Build iframe src ────────────────────────────────────────────────────
   const iframeSrc = (() => {
-    if (!useProxy || isLocalUrl(currentUrl)) {
-      return currentUrl;                     // localhost – load directly
-    }
-    // External URL – route through proxy
+    if (!useProxy || isLocalUrl(currentUrl)) return currentUrl;
     return `${PROXY_BASE}${encodeURIComponent(currentUrl)}`;
   })();
 
@@ -275,9 +254,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
 
   const handleNavigate = useCallback((newUrl: string) => {
     let url = newUrl.trim();
-    if (!/^https?:\/\//i.test(url)) {
-      url = 'https://' + url;
-    }
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
     setCurrentUrl(url);
     setLoading(true);
     setHasError(false);
@@ -293,6 +270,34 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     setLandscape(false);
   };
 
+  // ── Dragging logic for desktop width ───────────────────────────────────
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingWidth(true);
+  };
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingWidth) return;
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (!containerRect) return;
+      // New width = mouse X relative to container's left edge
+      let newWidth = e.clientX - containerRect.left;
+      const maxWidth = containerRect.width;
+      newWidth = Math.min(maxWidth, Math.max(320, newWidth));
+      setDesktopWidth(newWidth);
+    };
+    const onMouseUp = () => setIsDraggingWidth(false);
+    if (isDraggingWidth) {
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isDraggingWidth]);
+  // ── Close device menu on outside click ─────────────────────────────────
   useEffect(() => {
     const fn = (e: MouseEvent) => {
       if (deviceMenuRef.current && !deviceMenuRef.current.contains(e.target as Node)) {
@@ -303,6 +308,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     return () => document.removeEventListener('mousedown', fn);
   }, []);
 
+  // ── Observe container size for phone scaling ───────────────────────────
   const [containerSize, setContainerSize] = useState({ w: 600, h: 700 });
   useEffect(() => {
     if (!containerRef.current) return;
@@ -331,11 +337,12 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     mode === 'phone'
       ? { width: '100%', height: '100%', border: 'none', background: 'white' }
       : {
-          width:  desktopWidth || '100%',
+          width: desktopWidth || '100%',
           height: '100%',
           border: 'none',
           background: 'white',
           maxWidth: '100%',
+          transition: isDraggingWidth ? 'none' : 'width 0.1s ease-out', // smooth only after drag ends
         };
 
   const showLoading = visible && loading && !hasError;
@@ -344,32 +351,19 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     <div style={{
       position: 'absolute', inset: 0,
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: '#fff',
-      gap: 12,
-      padding: 24,
-      textAlign: 'center',
+      background: '#fff', gap: 12, padding: 24, textAlign: 'center',
     }}>
       <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#94a3b8' }}>error_outline</span>
-      <div style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>
-        This page cannot be embedded
-      </div>
+      <div style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>This page cannot be embedded</div>
       <div style={{ fontSize: 11.5, color: '#94a3b8', maxWidth: 280, lineHeight: 1.5 }}>
         The website may have blocked iframe embedding. Try enabling the proxy or open in a new tab.
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button onClick={openInNewTab}
           style={{
-            padding: '6px 14px',
-            borderRadius: 8,
-            border: '1px solid #e2e8f0',
-            background: 'white',
-            color: '#0f172a',
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
+            padding: '6px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white',
+            color: '#0f172a', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
           }}>
           <span className="material-symbols-outlined" style={{ fontSize: 14 }}>open_in_new</span>
           Open in new tab
@@ -377,17 +371,9 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
         {!isLocalUrl(currentUrl) && (
           <button onClick={() => setUseProxy(v => !v)}
             style={{
-              padding: '6px 14px',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0',
-              background: useProxy ? '#f0f9ff' : 'white',
-              color: useProxy ? '#0284c7' : '#64748b',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
+              padding: '6px 14px', borderRadius: 8, border: '1px solid #e2e8f0',
+              background: useProxy ? '#f0f9ff' : 'white', color: useProxy ? '#0284c7' : '#64748b',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
             }}>
             <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
               {useProxy ? 'toggle_on' : 'toggle_off'}
@@ -399,19 +385,15 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     </div>
   );
 
+  if (!visible) return null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc', userSelect: 'none' }}>
-
-      {/* ── Toolbar ───────────────────────────────────────────────────────── */}
+      {/* Toolbar */}
       <div style={{
-        height: 40,
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '0 10px',
-        borderBottom: '1px solid #e2e8f0',
-        background: 'white',
-        flexShrink: 0,
+        height: 40, display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px',
+        borderBottom: '1px solid #e2e8f0', background: 'white', flexShrink: 0,
       }}>
-
         {/* Mode switcher */}
         <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 8, padding: 2, flexShrink: 0 }}>
           {(['phone', 'desktop'] as const).map(m => (
@@ -419,8 +401,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               title={m === 'phone' ? 'Mobile preview' : 'Desktop preview'}
               style={{
                 padding: '3px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 4,
-                fontSize: 11, fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600,
                 background: mode === m ? 'white' : 'transparent',
                 color: mode === m ? '#0f172a' : '#94a3b8',
                 boxShadow: mode === m ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
@@ -449,18 +430,16 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               {selectedDevice.label}
               <span className="material-symbols-outlined" style={{ fontSize: 12, color: '#94a3b8' }}>expand_more</span>
             </button>
-
             {deviceMenuOpen && (
               <div style={{
                 position: 'absolute', top: 'calc(100% + 4px)', left: 0,
-                background: 'white', border: '1px solid #e2e8f0',
-                borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                zIndex: 100, minWidth: 180, padding: 4, overflow: 'hidden',
+                background: 'white', border: '1px solid #e2e8f0', borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, minWidth: 180, padding: 4,
               }}>
                 {[
-                  { label: 'iOS', devices: iosDevices, icon: 'phone_iphone' },
-                  { label: 'Android', devices: androidDevices, icon: 'phone_android' },
-                  { label: 'Tablet', devices: tabletDevices, icon: 'tablet_mac' },
+                  { label: 'iOS', devices: iosDevices },
+                  { label: 'Android', devices: androidDevices },
+                  { label: 'Tablet', devices: tabletDevices },
                 ].map(group => (
                   <div key={group.label}>
                     <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94a3b8', padding: '6px 10px 2px' }}>{group.label}</div>
@@ -468,8 +447,10 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                       <button key={d.id} onClick={() => { setSelectedDevice(d); setDeviceMenuOpen(false); }}
                         style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          width: '100%', padding: '5px 10px', border: 'none', background: selectedDevice.id === d.id ? '#f0f9ff' : 'transparent',
-                          cursor: 'pointer', borderRadius: 6, fontSize: 12, color: selectedDevice.id === d.id ? '#0284c7' : '#334155',
+                          width: '100%', padding: '5px 10px', border: 'none',
+                          background: selectedDevice.id === d.id ? '#f0f9ff' : 'transparent',
+                          cursor: 'pointer', borderRadius: 6, fontSize: 12,
+                          color: selectedDevice.id === d.id ? '#0284c7' : '#334155',
                           fontWeight: selectedDevice.id === d.id ? 600 : 400,
                         }}>
                         <span>{d.label}</span>
@@ -502,14 +483,13 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
           </div>
         )}
 
-        {/* Rotate (phone/tablet only) */}
+        {/* Rotate (phone only) */}
         {mode === 'phone' && (
           <button onClick={() => setLandscape(l => !l)} title={landscape ? 'Portrait' : 'Landscape'}
             style={{
               padding: '4px', borderRadius: 7, border: '1px solid #e2e8f0',
-              background: landscape ? '#f1f5f9' : 'white',
-              cursor: 'pointer', display: 'flex', alignItems: 'center',
-              color: '#64748b', flexShrink: 0,
+              background: landscape ? '#f1f5f9' : 'white', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', color: '#64748b', flexShrink: 0,
             }}>
             <span className="material-symbols-outlined" style={{
               fontSize: 15,
@@ -527,59 +507,36 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
           }
         </div>
 
-        {/* Editable URL bar */}
-        <EditableUrlBar
-          url={currentUrl}
-          onNavigate={handleNavigate}
-          onRefresh={refresh}
-          loading={loading}
-        />
+        <EditableUrlBar url={currentUrl} onNavigate={handleNavigate} onRefresh={refresh} loading={loading} />
 
-        {/* Proxy toggle button (icon) */}
-        <button
-          onClick={() => setUseProxy(v => !v)}
+        <button onClick={() => setUseProxy(v => !v)}
           title={useProxy ? 'Proxy ON – click to disable' : 'Proxy OFF – click to enable'}
           style={{
-            padding: 4,
-            borderRadius: 7,
-            border: '1px solid #e2e8f0',
-            background: useProxy ? '#e0f2fe' : 'white',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            color: useProxy ? '#0284c7' : '#64748b',
-            flexShrink: 0,
-          }}
-        >
+            padding: 4, borderRadius: 7, border: '1px solid #e2e8f0',
+            background: useProxy ? '#e0f2fe' : 'white', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', color: useProxy ? '#0284c7' : '#64748b', flexShrink: 0,
+          }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
             {useProxy ? 'cloud' : 'cloud_off'}
           </span>
         </button>
 
-        {/* Open in new tab button */}
         <button onClick={openInNewTab} title="Open in new tab"
           style={{
-            padding: 4,
-            borderRadius: 7,
-            border: '1px solid #e2e8f0',
-            background: 'white',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            color: '#64748b',
-            flexShrink: 0,
+            padding: 4, borderRadius: 7, border: '1px solid #e2e8f0',
+            background: 'white', cursor: 'pointer', display: 'flex',
+            alignItems: 'center', color: '#64748b', flexShrink: 0,
           }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>open_in_new</span>
         </button>
 
-        {/* Close button */}
         <button onClick={onClose} title="Close preview"
           style={{ padding: 4, borderRadius: 7, border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', flexShrink: 0, display: 'flex' }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
         </button>
       </div>
 
-      {/* ── Preview area ─────────────────────────────────────────────────── */}
+      {/* Preview area */}
       <div ref={containerRef} style={{
         flex: 1, overflow: 'hidden',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
@@ -599,20 +556,16 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                   src={iframeSrc}
                   style={iframeStyle}
                   onLoad={() => setLoading(false)}
-                  onError={() => {
-                    setLoading(false);
-                    setHasError(true);
-                  }}
+                  onError={() => { setLoading(false); setHasError(true); }}
                   title="Preview"
                 />
               </PhoneFrame>
             ) : (
               <div style={{
+                position: 'relative',
                 width: desktopWidth ? Math.min(desktopWidth, containerSize.w) : '100%',
                 height: '100%',
-                overflow: 'hidden',
-                background: 'white',
-                boxShadow: desktopWidth ? '0 0 0 1px #e2e8f0' : 'none',
+                transition: isDraggingWidth ? 'none' : 'width 0.1s ease',
               }}>
                 <iframe
                   key={iframeKey}
@@ -620,17 +573,33 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                   src={iframeSrc}
                   style={iframeStyle}
                   onLoad={() => setLoading(false)}
-                  onError={() => {
-                    setLoading(false);
-                    setHasError(true);
-                  }}
+                  onError={() => { setLoading(false); setHasError(true); }}
                   title="Preview"
                 />
+                {/* Draggable resize handle (only in desktop mode, when not full width) */}
+                {desktopWidth > 0 && (
+                  <div
+                    onMouseDown={onMouseDown}
+                    style={{
+                      position: 'absolute',
+                      right: -6,
+                      top: 0,
+                      bottom: 0,
+                      width: 12,
+                      cursor: 'ew-resize',
+                      zIndex: 20,
+                      background: 'rgba(0,0,0,0.05)',
+                      borderRadius: 4,
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.15)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.05)'}
+                  />
+                )}
               </div>
             )}
           </>
         )}
-
         {showLoading && (
           <div style={{
             position: 'absolute', inset: 0,

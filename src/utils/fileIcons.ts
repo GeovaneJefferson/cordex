@@ -8,6 +8,7 @@ const iconMap: Record<string, FileIconInfo> = {
     tsx:        { icon: 'javascript',       color: 'text-blue-400' },
     js:         { icon: 'javascript',       color: 'text-yellow-500' },
     jsx:        { icon: 'javascript',       color: 'text-yellow-400' },
+    cjs:        { icon: 'javascript',       color: 'text-amber-400' },   
     py:         { icon: 'terminal',         color: 'text-green-600' },
     pyx:        { icon: 'terminal',         color: 'text-green-600' },
     pyi:        { icon: 'terminal',         color: 'text-green-600' },
@@ -35,7 +36,7 @@ const iconMap: Record<string, FileIconInfo> = {
     graphql:    { icon: 'hub',              color: 'text-pink-500' },
     vue:        { icon: 'code',             color: 'text-green-500' },
     svelte:     { icon: 'code',             color: 'text-orange-500' },
-    // defaults for folders handled separately
+    gd:         { icon: 'code',             color: 'text-purple-500' },   
 };
 
 export function getFileIcon(filename: string): FileIconInfo {
@@ -47,6 +48,7 @@ export function detectLanguage(filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     const langMap: Record<string, string> = {
         ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+        cjs: 'javascript', mjs: 'javascript',   // BUG FIX: .cjs was 'plaintext'
         py: 'python', pyx: 'python', pyi: 'python', rs: 'rust', go: 'go',
         java: 'java', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
         css: 'css', scss: 'scss', less: 'less', html: 'html',
@@ -54,6 +56,7 @@ export function detectLanguage(filename: string): string {
         sh: 'shell', bash: 'shell', yml: 'yaml', yaml: 'yaml',
         toml: 'toml', lua: 'lua', sql: 'sql', graphql: 'graphql',
         vue: 'vue', svelte: 'svelte',
+        gd: 'gdscript', gdscript: 'gdscript',   // BUG FIX: .gd was 'plaintext'
     };
     return langMap[ext] || 'plaintext';
 }

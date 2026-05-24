@@ -3,7 +3,9 @@ const { ipcMain }      = require('electron')
 const os               = require('os')
 const { detectGPU }    = require('../utils/gpuDetect.cjs')
 const { loadSettings, saveSettings } = require('../utils/settings.cjs')
-const llamaServer      = require('../utils/llamaServer.cjs')
+const ollamaServer     = require('../utils/ollamaServer.cjs')
+
+const OLLAMA_BASE = 'http://127.0.0.1:11434'
 
 let cachedHW = null
 
@@ -22,7 +24,6 @@ module.exports = function(mainWindow) {
 
     const gpu = await detectGPU()
 
-    // Capability — GPU with any VRAM beats CPU tiers
     let capability = 'LITE'
     if (gpu.supported && gpu.vramMB >= 4000)             capability = 'PRO'
     else if (gpu.supported && gpu.vramMB >= 2000)        capability = 'MID'
@@ -32,13 +33,8 @@ module.exports = function(mainWindow) {
     const modelMap = {
       PRO:  { autocomplete: 'qwen2.5-coder:7b',        analysis: 'qwen2.5-coder:7b' },
       MID:  { autocomplete: 'qwen2.5-coder:3b',        analysis: 'qwen2.5-coder:3b' },
-      LITE: { autocomplete: 'qwen2.5-coder:1.5b-base', analysis: 'qwen2.5-coder:1.5b-base' },
+      LITE: { autocomplete: 'qwen2.5-coder:1.5b',      analysis: 'qwen2.5-coder:1.5b' },
     }[capability]
-
-    // llama-server flags
-    const llamaFlags = []
-    if (gpu.layers > 0) llamaFlags.push('-ngl', String(gpu.layers))
-    llamaFlags.push('-c', String(gpu.vramMB >= 8000 ? 4096 : gpu.vramMB >= 4000 ? 2048 : 1024))
 
     // Persist first-run settings
     const settings = loadSettings()
@@ -48,12 +44,10 @@ module.exports = function(mainWindow) {
         autocompleteModel: settings.autocompleteModel || modelMap.autocomplete,
         analysisModel:     settings.analysisModel     || modelMap.analysis,
         _gpuDetected:      true,
-        _llamaFlags:       llamaFlags,
-        hsaOverride:       gpu.envOverrides?.['HSA_OVERRIDE_GFX_VERSION'] ?? null,
       })
     }
 
-    const srvInfo = llamaServer.getStatus()
+    const srvInfo = await ollamaServer.getStatus()
 
     cachedHW = {
       total_ram_gb: totalRamGB, free_ram_gb: freeRamGB,
@@ -62,8 +56,7 @@ module.exports = function(mainWindow) {
       has_gpu: gpu.supported, gpu_vendor: gpu.vendor, gpu_name: gpu.name,
       vram_mb: gpu.vramMB, gpu_backend: gpu.backend, gpu_layers: gpu.layers,
       gpu_reason: gpu.reason, cuda_version: gpu.cudaVersion, rocm_version: gpu.rocmVersion,
-      hsa_override: gpu.envOverrides?.['HSA_OVERRIDE_GFX_VERSION'] ?? null,
-      llama_flags: llamaFlags, llama_binary: srvInfo.binary, llama_model: srvInfo.model,
+      llama_binary: 'ollama', llama_model: srvInfo.model,
       capability, recommended_models: modelMap,
       canThink: capability !== 'LITE', canFlow: true,
       modelMap: { ghost: modelMap.autocomplete, analysis: modelMap.analysis },
@@ -75,28 +68,35 @@ module.exports = function(mainWindow) {
 
   ipcMain.handle('hardware:redetect', async () => {
     cachedHW = null
-    const { ipcMain: ipc } = require('electron')
-    // re-invoke via direct call
     const gpu = await detectGPU()
     cachedHW = null
-    return ipc.emit('hardware:info')
-  })
-
-  ipcMain.handle('hardware:checkModels', async () => ({ valid: true, message: '' }))
-
-  // ── llama-server IPC ───────────────────────────────────────────────────────
-  ipcMain.handle('llama:start', async (_ev, opts = {}) => {
-    // Pass GPU info so env overrides (HSA_OVERRIDE) are applied
-    const gpu = await detectGPU()
-    return llamaServer.startServer({ ...opts, gpu })
-  })
-
-  ipcMain.handle('llama:stop', async () => {
-    llamaServer.stopServer()
     return { ok: true }
   })
 
-  ipcMain.handle('llama:status', async () => llamaServer.getStatus())
+  ipcMain.handle('hardware:checkModels', async () => {
+    try {
+      const res = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(3000) })
+      if (!res.ok) return { valid: false, message: 'Ollama not running. Run: ollama serve' }
+      const data = await res.json()
+      const models = data.models ?? []
+      if (models.length === 0) return { valid: false, message: 'No models installed. Run: ollama pull qwen2.5-coder:3b' }
+      return { valid: true, message: '' }
+    } catch {
+      return { valid: false, message: 'Ollama not running. Run: ollama serve' }
+    }
+  })
+
+  // ── Ollama IPC (replaces llama:* handlers) ─────────────────────────────────
+  ipcMain.handle('llama:start', async () => {
+    return ollamaServer.startServer()
+  })
+
+  ipcMain.handle('llama:stop', async () => {
+    ollamaServer.stopServer()
+    return { ok: true }
+  })
+
+  ipcMain.handle('llama:status', async () => ollamaServer.getStatus())
 
   ipcMain.handle('llama:save-config', async (_ev, cfg) => {
     const s = loadSettings()
@@ -104,26 +104,21 @@ module.exports = function(mainWindow) {
     return { ok: true }
   })
 
-  // Forward server status changes to renderer
-  llamaServer.onStatusChange(({ status, error }) => {
+  // Forward status changes to renderer
+  ollamaServer.onStatusChange(({ status, error }) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('llama:status-changed', { status, error })
     }
   })
 
-  // Auto-start llama-server if binary + model are present
+  // Auto-check Ollama on startup
   setTimeout(async () => {
-    const info = llamaServer.getStatus()
-    if (info.binary && info.model) {
-      console.log('[hw] Auto-starting llama-server with GPU...')
-      const gpu = await detectGPU()
-      const r   = await llamaServer.startServer({ ngl: gpu.layers || 99, gpu })
-      if (r.ok) console.log('[hw] llama-server started ✓')
-      else      console.warn('[hw] Auto-start failed:', r.error)
+    const info = await ollamaServer.getStatus()
+    if (info.status === 'running') {
+      console.log('[hw] Ollama is running ✓ model:', info.model ?? 'none')
     } else {
-      console.log('[hw] llama-server auto-start skipped')
-      if (!info.binary) console.log('  missing: binary (build llama.cpp with -DGGML_HIPBLAS=ON)')
-      if (!info.model)  console.log('  missing: model  (place .gguf in ~/llama.cpp/models/)')
+      console.warn('[hw] Ollama not detected. Run: ollama serve')
+      if (!info.model) console.log('  No models found. Run: ollama pull qwen2.5-coder:3b')
     }
   }, 2500)
 }

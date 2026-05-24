@@ -36,7 +36,10 @@ const FileTreeNode: React.FC<TreeNodeProps> = ({ node, depth, onSelect, onContex
         onDrop={e => {
           e.preventDefault(); e.stopPropagation(); setDragOver(false);
           if (!isFolder) return;
-          try { onDrop(JSON.parse(e.dataTransfer.getData('application/x-cordex-node')), node); } catch {}
+          try {
+            const src = JSON.parse(e.dataTransfer.getData('application/x-cordex-node'));
+            onDrop(src, node);
+          } catch {}
         }}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenu(e, node); }}
         onClick={() => isFolder ? setOpen(o => !o) : onSelect(node.path)}
@@ -65,6 +68,14 @@ export const Sidebar: React.FC = () => {
   const { state, dispatch } = useAppState();
   const { openProject, readFile, refreshTree } = useFileTree();
 
+  const [creatingFile, setCreatingFile] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
+  const newFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (creatingFile && newFileInputRef.current) newFileInputRef.current.focus();
+  }, [creatingFile]);
+
   const handleDrop = async (src: FileNode, destDir: FileNode) => {
     if (src.path === destDir.path || src.path.startsWith(destDir.path + '/')) return;
     await Cordex?.fs?.move?.(src.path, destDir.path);
@@ -82,6 +93,58 @@ export const Sidebar: React.FC = () => {
     await refreshTree();
   };
 
+  const handleNewFileClick = () => {
+    if (!state.projectRoot) {
+      alert('Please open a project folder first.');
+      return;
+    }
+    setNewFileName('');
+    setCreatingFile(true);
+  };
+
+  const commitNewFile = async () => {
+    const name = newFileName.trim();
+    if (!name) {
+      setCreatingFile(false);
+      return;
+    }
+    const targetPath = `${state.projectRoot}/${name}`;
+    try {
+      if (Cordex?.fs?.createFile) {
+        await Cordex.fs.createFile(state.projectRoot, name);
+      } else {
+        await Cordex?.fs?.writeFile?.(targetPath, '');
+      }
+      await refreshTree();
+    } catch (e) {
+      console.error('Failed to create file:', e);
+    } finally {
+      setCreatingFile(false);
+      setNewFileName('');
+    }
+  };
+
+  const handleOpenFile = async () => {
+    const filePath = await Cordex?.fs?.openFileDialog?.();
+    if (filePath) {
+      const result = await Cordex?.fs?.readFile(filePath);
+      if (result.ok) {
+        const ext = filePath.split('.').pop();
+        let language = 'plaintext';
+        const langMap: Record<string, string> = {
+          js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+          py: 'python', rs: 'rust', go: 'go', java: 'java', cpp: 'cpp', c: 'c',
+          html: 'html', css: 'css', json: 'json', md: 'markdown',
+        };
+        if (ext && langMap[ext]) language = langMap[ext];
+        dispatch({
+          type: 'OPEN_FILE',
+          payload: { path: filePath, content: result.content, language },
+        });
+      }
+    }
+  };
+
   const iconBtn = (icon: string, title: string, onClick?: () => void) => (
     <button title={title} onClick={onClick}
       className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-all duration-150">
@@ -89,13 +152,13 @@ export const Sidebar: React.FC = () => {
     </button>
   );
 
-  const panelTitle = state.sidebarPanel === 'explorer' ? 'Explorer'
-    : state.sidebarPanel === 'search' ? 'Search'
-    : 'Source Control';
+  // const panelTitle = state.sidebarPanel === 'explorer' ? 'Explorer'
+  //   : state.sidebarPanel === 'search' ? 'Search'
+  //   : 'Source Control';
 
   return (
     <aside style={{
-      width:    state.sidebarVisible ? '260px' : '0px',
+      width: state.sidebarVisible ? '260px' : '0px',
       minWidth: state.sidebarVisible ? '260px' : '0px',
       transition: 'width 220ms cubic-bezier(0.4,0,0.2,1), min-width 220ms cubic-bezier(0.4,0,0.2,1)',
       overflow: 'hidden',
@@ -105,12 +168,39 @@ export const Sidebar: React.FC = () => {
       {state.sidebarPanel === 'explorer' && (
         <>
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 flex-shrink-0">
-            <h2 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Explorer</h2>
-            <div className="flex items-center gap-0.5">
-              {iconBtn('note_add',             'New File')}
-              {iconBtn('drive_folder_upload',  'Open Folder', openProject)}
-              {iconBtn('refresh',              'Refresh',     refreshTree)}
-            </div>
+            {creatingFile ? (
+              <div className="flex items-center gap-1 flex-1 mr-2">
+                <input
+                  ref={newFileInputRef}
+                  value={newFileName}
+                  onChange={e => setNewFileName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') commitNewFile();
+                    if (e.key === 'Escape') { setCreatingFile(false); setNewFileName(''); }
+                  }}
+                  placeholder="filename.txt"
+                  className="flex-1 px-2 py-1 text-[12px] border border-orange-400 rounded outline-none bg-white"
+                />
+                <button onClick={commitNewFile}
+                  className="p-1 text-green-600 hover:bg-green-50 rounded">
+                  <span className="material-symbols-outlined text-[15px]">check</span>
+                </button>
+                <button onClick={() => { setCreatingFile(false); setNewFileName(''); }}
+                  className="p-1 text-gray-400 hover:bg-gray-100 rounded">
+                  <span className="material-symbols-outlined text-[15px]">close</span>
+                </button>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Explorer</h2>
+                <div className="flex items-center gap-0.5">
+                  {iconBtn('note_add',             'New File', handleNewFileClick)}
+                  {iconBtn('open_in_browser',      'Open File', handleOpenFile)}
+                  {iconBtn('drive_folder_upload',  'Open Folder', openProject)}
+                  {iconBtn('refresh',              'Refresh',     refreshTree)}
+                </div>
+              </>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto sidebar-scroll py-1"
             onDragOver={e => e.preventDefault()} onDrop={handleExternalDrop}>
@@ -124,10 +214,13 @@ export const Sidebar: React.FC = () => {
                 </button>
               </div>
             ) : (
-              state.fileTree.map(node => (
+              // ✅ Explicitly type 'node' as FileNode to fix TS error
+              state.fileTree.map((node: FileNode) => (
                 <FileTreeNode key={node.id} node={node} depth={0}
-                  onSelect={p => readFile(p)} onContextMenu={(e, n) => dispatch({ type: 'SET_CONTEXT_MENU', menu: { x: e.clientX, y: e.clientY, node: n } })}
-                  onDrop={handleDrop} />
+                  onSelect={p => readFile(p)}
+                  onContextMenu={(e, n) => dispatch({ type: 'SET_CONTEXT_MENU', menu: { x: e.clientX, y: e.clientY, node: n } })}
+                  onDrop={handleDrop}
+                />
               ))
             )}
           </div>

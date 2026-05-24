@@ -85,7 +85,7 @@ export const HardwareBadge: React.FC = () => {
               <>
                 <div className="border-t border-gray-100 my-2" />
                 <div>
-                  <span className="text-gray-400 block mb-1">llama-server flags</span>
+                  <span className="text-gray-400 block mb-1">Ollama flags</span>
                   <code className="block bg-gray-50 rounded px-2 py-1 text-[10px] text-gray-700 font-mono break-all">
                     {hw.llama_flags.join(' ')}
                   </code>

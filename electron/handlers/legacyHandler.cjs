@@ -6,6 +6,8 @@ const os   = require('os')
 const { exec } = require('child_process')
 const { loadSettings, saveSettings } = require('../utils/settings.cjs')
 
+const OLLAMA_BASE = 'http://127.0.0.1:11434'
+
 function detectLang(filename) {
   const ext = path.extname(filename).slice(1).toLowerCase()
   const map = {
@@ -80,7 +82,7 @@ module.exports = function(mainWindow) {
 
   ipcMain.handle('ollama-status', async () => {
     try {
-      const res = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(2000) })
+      const res = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(2000) })
       const data = await res.json()
       return { connected: true, models: data.models ?? [], hasModel: true, latency: 0 }
     } catch { return { connected: false, models: [], hasModel: false, latency: null } }
@@ -88,16 +90,26 @@ module.exports = function(mainWindow) {
 
   ipcMain.handle('system-memory', async () => ({ used: Math.round(process.memoryUsage().rss / 1024 / 1024) }))
   ipcMain.handle('get-selected-model', async () => ({ model: loadSettings().analysisModel }))
-  ipcMain.handle('set-selected-model', async (_ev, model) => { const s = loadSettings(); saveSettings({ ...s, analysisModel: model }); return { success: true } })
+  ipcMain.handle('set-selected-model', async (_ev, model) => {
+    const s = loadSettings(); saveSettings({ ...s, analysisModel: model }); return { success: true }
+  })
+
   ipcMain.handle('complete-code', async (_ev, code) => {
     try {
       const settings = loadSettings()
-      const res = await fetch('http://127.0.0.1:11434/api/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: settings.autocompleteModel, prompt: code, stream: false, options: { num_predict: 128, temperature: 0.2 } }),
+      const res = await fetch(`${OLLAMA_BASE}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: settings.autocompleteModel,
+          messages: [{ role: 'user', content: code }],
+          stream: false,
+          options: { num_predict: 128, temperature: 0.2 },
+        }),
         signal: AbortSignal.timeout(15000),
       })
-      const data = await res.json(); return data.response?.trim() ?? ''
+      const data = await res.json()
+      return data.message?.content?.trim() ?? ''
     } catch { return '' }
   })
 }

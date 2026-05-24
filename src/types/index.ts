@@ -13,7 +13,7 @@ export interface Tab {
   content: string;
   language: string;
   isDirty: boolean;
-  tabType?: 'file' | 'flow';
+  tabType?: 'file' | 'flow';   // 'untitled' is not allowed – untitled files are still 'file'
   flowSourceTabId?: string;
 }
 
@@ -75,9 +75,10 @@ export interface AppState {
   llamaStatus: 'stopped' | 'starting' | 'running' | 'error';
   llamaError: string | null;
   contextMenu: { x: number; y: number; node: FileNode } | null;
-  // ── New state ──────────────────────────────────────────────────
   browserVisible: boolean;
   commandPaletteOpen: boolean;
+  chatVisible: boolean;
+  historyPanelVisible: boolean;
 }
 
 export type AppAction =
@@ -102,12 +103,17 @@ export type AppAction =
   | { type: 'TOGGLE_AI_SETTINGS' }
   | { type: 'SET_AI_SETTINGS'; settings: Partial<AISettings> }
   | { type: 'SET_SPLIT_TAB'; tabId: string | null }
-  | { type: 'SET_LLAMA_STATUS'; status: string; error?: string | null }
+  | { type: 'SET_LLAMA_STATUS'; status: 'stopped' | 'starting' | 'running' | 'error'; error?: string | null }
   | { type: 'SET_CONTEXT_MENU'; menu: AppState['contextMenu'] }
-  // ── New actions ─────────────────────────────────────────────────
   | { type: 'TOGGLE_BROWSER' }
   | { type: 'TOGGLE_COMMAND_PALETTE' }
   | { type: 'NEXT_TAB' }
   | { type: 'PREVIOUS_TAB' }
   | { type: 'CLOSE_TAB' }
-  | { type: 'TOGGLE_SPLIT' };
+  | { type: 'TOGGLE_SPLIT' }
+  | { type: 'NEW_FILE' }
+  | { type: 'OPEN_FILE'; payload: { path: string; content: string; language: string } }
+  | { type: 'UPDATE_TAB_PATH'; id: string; path: string; name?: string }
+  | { type: 'TOGGLE_CHAT_PANEL' } 
+  | { type: 'TOGGLE_HISTORY_PANEL' }
+;

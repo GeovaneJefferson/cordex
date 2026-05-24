@@ -1,0 +1,42 @@
+qwen2.5-coder:7b-instruct
+Now I have a complete picture. Let me catalogue everything before writing:
+
+**Bugs found:**
+1. `CodeEditor.tsx` — Ctrl+S `addCommand` is registered **twice** (duplicate save)
+2. `App.tsx` — `GlobalShortcuts` re-registers keyboard listeners on **every state change** (including cursor moves → fires 100x/min)
+3. `StatusBar.tsx` — git status fetched on every `state.tabs` change instead of only when `projectRoot` changes
+4. `EditorContainer.tsx` — resizer drag doesn't block Monaco mouse events → **causes text selection to break**
+
+**Performance:**
+5. `ChatPanel.tsx` — `setMessages(prev => prev.map(...))` remaps ALL messages on every AI chunk; `ReactMarkdown` + `SyntaxHighlighter` re-render everything; fix with separate streaming state + `React.memo`
+6. `GitPanel.tsx` — console.log spam on every refreshNow copy all fixed files to output:Here's everything that was done — 7 files, drop them into your project at the same paths:
+
+---
+
+### 🐛 Bugs fixed
+
+**`CodeEditor.tsx`** — `Ctrl+S` was registered **twice** via two identical `addCommand` calls. This caused double-saves and potentially double file tree refreshes. The second duplicate block is removed, leaving one clean Save As-aware handler.
+
+**`App.tsx` — `GlobalShortcuts`** — The `useEffect` depended on `[state, dispatch]`, meaning the keyboard listener was **unregistered and re-registered on every single state change** — including every cursor move (`SET_CURSOR` fires constantly while typing). Fixed using a `stateRef` mirror: the handler registers once, always reads fresh state via the ref.
+
+**`StatusBar.tsx`** — Git branch was fetched with `[state.projectRoot, state.tabs]` as deps. Since `tabs` update on every keystroke (content change), this fired a `git status` call **on every character typed**. Now only re-fetches when `projectRoot` changes.
+
+**`EditorContainer.tsx` — Monaco text selection bug** — When dragging the resizer, the browser's drag system was competing with Monaco's own text selection mouse events, causing selections to break or jump. Fixed by rendering a transparent overlay div over the editor area only while the resizer is being dragged (`isDraggingResizer` state), which blocks Monaco from receiving conflicting mouse events.
+
+---
+
+### ⚡ Performance
+
+**`ChatPanel.tsx`** — Two big wins:
+- Extracted `MessageBubble` as `React.memo` — previous messages no longer re-render on each streaming chunk
+- Streaming content is now kept in a **separate `streamingContent` state** (with a `streamBufferRef` for accumulation). The old approach called `prev.map(...)` over all messages on every chunk. Now only `StreamingBubble` re-renders during streaming; completed messages are frozen.
+
+**`GitPanel.tsx`** — Removed all `console.log` and `console.error` spam that was firing on every refresh (status fetch, init, checkout, etc.). Each debug log triggered a V8 string allocation + IPC write.
+
+**`StatusBar.tsx`** — Wrapped in `React.memo` so it only re-renders when its own state/props change.
+
+---
+
+### 🌐 Locale
+
+**`src/locales/en.json`** — All UI strings extracted across every component: nav, sidebar, editor toolbar, tabs, chat, git panel, status bar, language names, modals, context menus, and common labels. Structured with template placeholders like `{{branch}}`, `{{file}}`, `{{count}}` ready for an i18n library (i18next, react-i18next, etc.).

@@ -17,8 +17,10 @@ global.ptyInstances = global.ptyInstances || new Map()
 module.exports = function(mainWindow) {
   ipcMain.handle('terminal:create', async (ev, { id, cwd, cols, rows }) => {
     if (!nodePty) return { ok: false, error: 'node-pty not available' }
-    if (global.ptyInstances.has(id)) return { ok: true }
-
+    if (global.ptyInstances.has(id)) {
+      try { global.ptyInstances.get(id).kill(); } catch (_) {}
+      global.ptyInstances.delete(id);
+    }
     const shell = process.env.SHELL || (process.platform === 'win32' ? 'powershell.exe' : '/bin/bash')
     const workDir = cwd && fs.existsSync(cwd) ? cwd : os.homedir()
 
@@ -67,7 +69,7 @@ module.exports = function(mainWindow) {
     const ptyProc = global.ptyInstances.get(id)
     if (ptyProc) ptyProc.write(data)
   })
-
+  
   ipcMain.handle('terminal:resize', (_ev, { id, cols, rows }) => {
     const ptyProc = global.ptyInstances.get(id)
     if (ptyProc) ptyProc.resize(cols, rows)

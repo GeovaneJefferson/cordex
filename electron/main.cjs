@@ -7,15 +7,28 @@ const { loadSettings, saveSettings } = require('./utils/settings.cjs')
 // Hardware-driven rendering flags
 const totalRam = os.totalmem() / (1024 ** 3)
 if (totalRam < 8) {
-  app.commandLine.appendSwitch('disable-gpu')
-  app.commandLine.appendSwitch('disable-software-rasterizer')
+  app.commandLine.appendSwitch('disable-software-rasterizer');
+  app.commandLine.appendSwitch('disable-features', 'UseNativeFileDialog');
 }
 if (process.platform === 'linux') {
-  app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
-  app.commandLine.appendSwitch('enable-features', 'WaylandWindowDecorations')
+  app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+  app.commandLine.appendSwitch('enable-features', 'WaylandWindowDecorations');
+  app.commandLine.appendSwitch('disable-features', 'UseNativeFileDialog');
+  app.commandLine.appendSwitch('disable-accelerated-2d-canvas');
 }
 
 let mainWin = null
+
+function safeRequireHandler(modulePath, arg) {
+  try {
+    const handler = require(modulePath)
+    handler(arg)
+    console.log(`[main] ✓ ${path.basename(modulePath)}`)
+  } catch (err) {
+    console.error(`[main] ✗ Failed to load ${path.basename(modulePath)}:`, err.message)
+    console.error(err.stack)
+  }
+}
 
 function createWindow() {
   const isDev = process.env.NODE_ENV !== 'production'
@@ -66,15 +79,21 @@ function createWindow() {
     mainWin.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  require('./handlers/aiHandler.cjs')(mainWin)
-  require('./handlers/fileSystemHandler.cjs')(mainWin)
-  require('./handlers/terminalHandler.cjs')(mainWin)
-  require('./handlers/hardwareHandler.cjs')(mainWin)
-  require('./handlers/flowHandler.cjs')()
-  require('./handlers/legacyHandler.cjs')(mainWin)
-  require('./handlers/settingsHandler.cjs')()
-  require('./handlers/windowHandler.cjs')(mainWin)
-  // ollamaHandler removed — llama.cpp only
+  // Each handler is isolated — one crash won't kill the others
+  safeRequireHandler('./handlers/aiHandler.cjs', mainWin)
+  safeRequireHandler('./handlers/fileSystemHandler.cjs', mainWin)
+  safeRequireHandler('./handlers/terminalHandler.cjs', mainWin)
+  safeRequireHandler('./handlers/hardwareHandler.cjs', mainWin)
+  safeRequireHandler('./handlers/flowHandler.cjs', undefined)
+  safeRequireHandler('./handlers/legacyHandler.cjs', mainWin)
+  safeRequireHandler('./handlers/settingsHandler.cjs', undefined)
+  safeRequireHandler('./handlers/windowHandler.cjs', mainWin)
+  safeRequireHandler('./handlers/ollamaHandler.cjs', undefined)
+  safeRequireHandler('./handlers/chatHandler.cjs', mainWin)
+  safeRequireHandler('./handlers/lspHandler.cjs', undefined)
+  safeRequireHandler('./utils/gitHandler.cjs', undefined)
+  safeRequireHandler('./handlers/historyHandler.cjs', undefined)
+  safeRequireHandler('./services/aiRouter.cjs', mainWin)
 
   mainWin.on('closed', () => {
     if (global.ptyInstances?.size) {

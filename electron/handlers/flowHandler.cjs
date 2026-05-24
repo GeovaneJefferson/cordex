@@ -4,23 +4,15 @@ const path         = require('path')
 const fs           = require('fs-extra')
 const { app }      = require('electron')
 const { loadSettings } = require('../utils/settings.cjs')
-const { llamaGenerate, resolveBackend, extractText } = require('../utils/llamaCpp.cjs')
-const { scanModels }   = require('../utils/llamaServer.cjs')
+const { llamaGenerate, resolveBackend, extractText } = require('../utils/ollamaClient.cjs')
+const { scanModels }   = require('../utils/ollamaServer.cjs')
 
 // ── Dependency Manifest Builder ───────────────────────────────────────────────
-// Extracts local import targets from a source file, reads those files, and
-// builds a compact "API surface" string listing exported symbols with their
-// signatures. This gets injected into the LLM prompt so the flow graph can
-// represent cross-file calls with scoped node IDs (file:function).
-
 const IMPORT_PATTERNS = [
-  // Python:  from .module import foo   /  import module
   /^(?:from\s+(\.{0,2}[\w/.]+)\s+import|import\s+(\.{0,2}[\w/.]+))/gm,
-  // JS/TS:   import ... from './module'   /  require('./module')
   /(?:import\s+.*?\s+from\s+['"]([./][^'"]+)['"]|require\s*\(\s*['"]([./][^'"]+)['"]\s*\))/gm,
 ]
 
-// Signature extractors per language
 const SIG_PATTERNS = {
   py: [
     /^(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)/gm,
@@ -63,10 +55,8 @@ function extractSignatures(content, lang) {
 
 function resolveImportPath(importStr, sourceFile, projectRoot) {
   const sourceDir = path.dirname(sourceFile)
-  // Strip leading dots for Python relative imports
   let rel = importStr.replace(/^\.+/, match => match === '.' ? './' : match === '..' ? '../' : './')
   if (!rel.startsWith('.')) rel = './' + rel
-  // Convert Python dotted paths to slashes
   rel = rel.replace(/\./g, '/')
 
   const base = path.resolve(sourceDir, rel)
@@ -75,7 +65,6 @@ function resolveImportPath(importStr, sourceFile, projectRoot) {
     const candidate = base.endsWith(ext) ? base : base + ext
     if (fs.existsSync(candidate)) return candidate
   }
-  // Try index file
   for (const ext of ['/index.ts', '/index.js', '/index.tsx']) {
     const candidate = base + ext
     if (fs.existsSync(candidate)) return candidate
@@ -94,7 +83,6 @@ async function buildDependencyManifest(code, filePath, projectRoot) {
     while ((m = re.exec(code)) !== null) {
       const importPath = m[1] || m[2]
       if (!importPath) continue
-      // Only local imports (relative or within project)
       if (!importPath.startsWith('.') && !importPath.startsWith('/')) continue
       const resolved = resolveImportPath(importPath, filePath, projectRoot)
       if (resolved) resolvedImports.add(resolved)
@@ -113,17 +101,15 @@ async function buildDependencyManifest(code, filePath, projectRoot) {
       if (sigs.length === 0) continue
       lines.push(`\nFile: ${relPath}`)
       lines.push(`Exports: ${sigs.join(', ')}`)
-      // Add brief content snippet (first 1200 chars) for context
       const snippet = content.slice(0, 1200).replace(/\n{3,}/g, '\n\n')
       lines.push(`Source (truncated):\n${snippet}`)
     } catch {}
   }
 
-  if (lines.length === 1) return '' // Only header, no deps found
+  if (lines.length === 1) return ''
   return lines.join('\n')
 }
 
-// ── Flow Analysis System Prompt ───────────────────────────────────────────────
 function buildSystemPrompt(manifest) {
   const manifestSection = manifest
     ? `\nYou have access to a dependency manifest for local imports. Use it to:\n- Identify cross-file function calls and represent them as nodes\n- Use SCOPED node IDs for cross-file calls: "filename:function_name" (e.g., "utils:read_file")\n- Show the data/call flow between files accurately\n\n${manifest}\n`
@@ -141,29 +127,13 @@ Rules:
 - Keep it under 16 nodes max (multi-file graphs may use up to 16)
 
 Return ONLY valid JSON, no markdown fences, no explanation:
-{"nodes":[{"id":"string","type":"string","label":"string","description":"string"}],"edges":[{"source":"string","target":"string","label":"string"}]}`
+{"nodes":[{"id":"string","type":"string","label":"string","description":"string","line":0}],"edges":[{"source":"string","target":"string","label":"string"}]}`
 }
-
-// UNIVERSAL RULES:
-// 1. ENTRY & EXIT: Every flow MUST start with an "Entry" node and end with a "Result" node.
-// 2. ACTION-ORIENTED: Every node MUST start with a verb (e.g., "Parse Data", "Send Request", "Wait for Input").
-// 3. LOGIC BRANCHING: Represent ALL conditional logic (if/switch/try-catch) as "decision" nodes.
-// 4. ABSTRACTION: If the code is complex, group small steps into a single meaningful "call" node (e.g., "Process Payment" instead of mapping 50 lines of math).
-
-// NODE TYPES: "call" (action), "loop", "decision", "error", "value".
-// IGNORE: Variable declarations, imports, and low-level boilerplate.
-
-// OUTPUT: STRICT RAW JSON ONLY.
-// {
-//   "nodes": [{"id":"1","type":"call","label":"Start Process","description":"Entry point"}],
-//   "edges": [{"source":"1","target":"2","label":"then"}]
-// }
 
 // ── IPC Handlers ──────────────────────────────────────────────────────────────
 module.exports = function() {
 
   ipcMain.handle('analyze-flow', async (_ev, payload) => {
-    // Accept both old string API and new object API
     const code        = typeof payload === 'string' ? payload : payload?.code ?? ''
     const filePath    = typeof payload === 'object'  ? payload?.filePath    : null
     const projectRoot = typeof payload === 'object'  ? payload?.projectRoot : null
@@ -174,13 +144,12 @@ module.exports = function() {
 
     try {
       const settings        = loadSettings()
-      const availableModels = scanModels()
+      const availableModels = await scanModels()
       const defaultModel    = availableModels.length > 0 ? availableModels[0].name : null
       const modelToUse      = settings.flowModel || settings.analysisModel || defaultModel
 
-      if (!modelToUse) throw new Error('No AI model found. Place a .gguf model in your models directory.')
+      if (!modelToUse) throw new Error('No Ollama model found. Run: ollama pull qwen2.5-coder:3b')
 
-      // Build dependency manifest from local imports
       const manifest = await buildDependencyManifest(code, filePath, projectRoot)
       if (manifest) console.log('[flowHandler] Dependency manifest built:', manifest.split('\n').slice(0, 4).join(' | '))
 
@@ -196,9 +165,8 @@ module.exports = function() {
       })
 
       let raw = await extractText(res)
-      if (!raw) throw new Error('Empty response from llama-server.')
+      if (!raw) throw new Error('Empty response from Ollama.')
 
-      // Strip <think> blocks and markdown formatting
       raw = raw
         .replace(/<think>[\s\S]*?<\/think>/gi, '')
         .replace(/```json?\n?/gi, '')
@@ -243,6 +211,301 @@ module.exports = function() {
       return { success: true }
     } catch (err) { return { success: false, error: err.message } }
   })
+
+  // ── flow:detect-mode ─────────────────────────────────────────────────────────
+  // Decides EXECUTION MODE vs SIMULATION MODE based on language + runtime availability.
+  ipcMain.handle('flow:detect-mode', async (_ev, { language, filePath }) => {
+    const lang = (language || detectLangFromPath(filePath || '')).toLowerCase()
+    const executable = EXECUTABLE_LANGS.has(lang)
+    if (!executable) return { mode: 'simulation', reason: `${lang} is not directly executable` }
+
+    const available = await checkRuntime(lang)
+    if (!available) return { mode: 'simulation', reason: `${lang} runtime not found in PATH` }
+
+    return { mode: 'execution', reason: `${lang} runtime available`, language: lang }
+  })
+
+  // ── flow:run ─────────────────────────────────────────────────────────────────
+  // Runs code in an isolated subprocess, captures stdout/stderr/exitCode.
+  ipcMain.handle('flow:run', async (_ev, { code, language, filePath, timeout = 12000 }) => {
+    const lang = (language || detectLangFromPath(filePath || '')).toLowerCase()
+    try {
+      return await executeCode(code, lang, timeout)
+    } catch (err) {
+      return { success: false, stdout: '', stderr: err.message, exitCode: -1, errorLine: null, mode: 'execution' }
+    }
+  })
+
+  // ── flow:simulate ────────────────────────────────────────────────────────────
+  // Static analysis: predicts execution path, flags risky nodes.
+  ipcMain.handle('flow:simulate', async (_ev, { code, language, nodes }) => {
+    const lang = (language || '').toLowerCase()
+    try {
+      return simulateExecution(code, nodes || [], lang)
+    } catch (err) {
+      return { executedNodes: [], riskNodes: [], predictedNodes: [], mode: 'simulation', error: err.message }
+    }
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXECUTION ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+const { spawn }  = require('child_process')
+const os         = require('os')
+
+const EXECUTABLE_LANGS = new Set(['python', 'javascript', 'typescript', 'node', 'cpp', 'c', 'cjs', 'mjs'])
+const EXT_TO_LANG = { py: 'python', js: 'javascript', cjs: 'javascript', mjs: 'javascript', ts: 'typescript', tsx: 'typescript', cpp: 'cpp', cc: 'cpp', c: 'c' }
+
+function detectLangFromPath(filePath) {
+  const ext = path.extname(filePath).slice(1).toLowerCase()
+  return EXT_TO_LANG[ext] || ext || 'unknown'
+}
+
+// Quick runtime availability check
+function checkRuntime(lang) {
+  const cmdMap = {
+    python:     ['python3', '--version'],
+    javascript: ['node', '--version'],
+    typescript: ['node', '--version'],
+    cpp:        ['g++', '--version'],
+    c:          ['gcc', '--version'],
+  }
+  const args = cmdMap[lang]
+  if (!args) return Promise.resolve(false)
+  return new Promise(resolve => {
+    const p = spawn(args[0], args.slice(1))
+    const t = setTimeout(() => { p.kill(); resolve(false) }, 3000)
+    p.on('close', code => { clearTimeout(t); resolve(code === 0) })
+    p.on('error', () => { clearTimeout(t); resolve(false) })
+  })
+}
+
+// Subprocess runner with timeout + full output capture
+function runProcess(cmd, args, timeout) {
+  return new Promise(resolve => {
+    let stdout = '', stderr = ''
+    let timedOut = false
+
+    let proc
+    try {
+      proc = spawn(cmd, args, {
+        env: { ...process.env, PYTHONUNBUFFERED: '1', NODE_PATH: '' },
+      })
+    } catch (err) {
+      return resolve({ success: false, stdout: '', stderr: err.message, exitCode: -1, timedOut: false })
+    }
+
+    const timer = setTimeout(() => {
+      timedOut = true
+      proc.kill('SIGKILL')
+    }, timeout)
+
+    proc.stdout?.on('data', d => { stdout += d.toString(); if (stdout.length > 50000) stdout = stdout.slice(-50000) })
+    proc.stderr?.on('data', d => { stderr += d.toString(); if (stderr.length > 20000) stderr = stderr.slice(-20000) })
+
+    proc.on('close', code => {
+      clearTimeout(timer)
+      resolve({ success: code === 0 && !timedOut, stdout: stdout.trimEnd(), stderr: stderr.trimEnd(), exitCode: timedOut ? -9 : (code ?? -1), timedOut })
+    })
+    proc.on('error', err => {
+      clearTimeout(timer)
+      resolve({ success: false, stdout: '', stderr: err.message, exitCode: -1, timedOut: false })
+    })
+  })
+}
+
+// Extract the first error line number from a stack trace
+function extractErrorLine(stderr, lang) {
+  if (!stderr) return null
+  const pats = {
+    python:     [/File ".*?", line (\d+)/,  /^\s*line (\d+)/m],
+    javascript: [/[^ ]+:(\d+):\d+\)?\s*$/m, /at .+:(\d+):\d+/],
+    typescript: [/[^ ]+\.tsx?:(\d+):\d+/,  /at .+:(\d+):\d+/],
+    cpp:        [/:(\d+):\d+: (?:error|fatal)/,  /line (\d+)/],
+    c:          [/:(\d+):\d+: (?:error|fatal)/],
+  }
+  for (const re of (pats[lang] ?? [])) {
+    const m = re.exec(stderr)
+    if (m) return parseInt(m[1], 10)
+  }
+  return null
+}
+
+// Main execution entry point — writes to temp file, runs, cleans up
+async function executeCode(code, lang, timeout = 12000) {
+  const extMap = { python: '.py', javascript: '.js', typescript: '.ts', cpp: '.cpp', c: '.c' }
+  const ext    = extMap[lang] ?? '.txt'
+  const tmpFile = path.join(os.tmpdir(), `cordex_${Date.now()}${ext}`)
+
+  try {
+    await fs.writeFile(tmpFile, code, 'utf8')
+    let result
+
+    if (lang === 'python') {
+      result = await runProcess('python3', [tmpFile], timeout)
+    } else if (lang === 'javascript') {
+      result = await runProcess('node', [tmpFile], timeout)
+    } else if (lang === 'typescript') {
+      // Try tsx (fast), fall back to ts-node
+      result = await runProcess('npx', ['--yes', 'tsx', tmpFile], timeout)
+      if (!result.success && result.stderr.includes('npx')) {
+        result = await runProcess('node', ['--loader', 'ts-node/esm', tmpFile], timeout)
+      }
+    } else if (lang === 'cpp' || lang === 'c') {
+      const compiler = lang === 'cpp' ? 'g++' : 'gcc'
+      const binary   = tmpFile.replace(ext, '')
+      const compile  = await runProcess(compiler, [tmpFile, '-o', binary, '-std=c++17'], timeout)
+      if (!compile.success) {
+        return { ...compile, mode: 'execution', errorLine: extractErrorLine(compile.stderr, lang), phase: 'compile' }
+      }
+      result = await runProcess(binary, [], Math.min(timeout, 8000))
+      try { await fs.remove(binary) } catch {}
+    } else {
+      return { success: false, stdout: '', stderr: `Unsupported language: ${lang}`, exitCode: -1, mode: 'simulation', errorLine: null }
+    }
+
+    return {
+      ...result,
+      mode: 'execution',
+      errorLine: result.success ? null : extractErrorLine(result.stderr, lang),
+    }
+  } finally {
+    try { await fs.remove(tmpFile) } catch {}
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SIMULATION ENGINE  (static analysis — no subprocess)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Risk pattern detectors — language-agnostic heuristics
+const RISK_CHECKS = [
+  { name: 'Assignment in condition',   re: /if\s*\([^)]*(?<![!<>=])=(?!=)[^)]*\)/ },
+  { name: 'Possible null dereference', re: /(?:null|None|undefined)\s*\.\w+/ },
+  { name: 'Array index in loop',       re: /(?:for|while)[\s\S]{0,200}\w+\[(?!\s*[0-9]+\s*\])/ },
+  { name: 'Recursive call risk',       re: /function\s+(\w+)[\s\S]{0,300}\1\s*\(/ },
+  { name: 'Bare except / catch',       re: /(?:except\s*:|catch\s*\(\s*\))/ },
+  { name: 'Hardcoded credentials',     re: /(?:password|secret|token|api_key)\s*=\s*['"][^'"]{4,}['"]/ },
+]
+
+function codeRisks(snippet) {
+  return RISK_CHECKS.filter(r => r.re.test(snippet)).map(r => r.name)
+}
+
+// Map node labels to approximate source line ranges using identifier scanning
+function buildLineMap(nodes, lines) {
+  const identMap = new Map()
+  const defPatterns = [
+    /^(?:async\s+)?def\s+(\w+)/,           // Python def
+    /^class\s+(\w+)/,                       // Python/JS/Java class
+    /^(?:export\s+)?(?:async\s+)?function\s+(\w+)/, // JS function
+    /^(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(/, // Arrow fn
+    /^\w[\w:*&\s]+\s+(\w+)\s*\([^)]*\)\s*\{?$/, // C/C++ function
+  ]
+
+  lines.forEach((raw, i) => {
+    const t = raw.trim()
+    for (const pat of defPatterns) {
+      const m = pat.exec(t)
+      if (m) identMap.set(m[1].toLowerCase(), i + 1)
+    }
+  })
+
+  const result = {}
+  for (const node of nodes) {
+    const d     = node.data ?? node
+    const label = (d.label ?? node.label ?? node.id).toLowerCase()
+    const words = label.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 2)
+
+    for (const word of words) {
+      if (identMap.has(word)) {
+        const start = identMap.get(word)
+        result[node.id] = { start, end: Math.min(start + 40, lines.length) }
+        break
+      }
+    }
+  }
+  return result
+}
+
+// Build the topological execution path through nodes
+function topoOrder(nodes, edges) {
+  const adjList  = {}
+  const inDegree = {}
+  nodes.forEach(n => { adjList[n.id] = []; inDegree[n.id] = 0 })
+  edges.forEach(e => { adjList[e.source]?.push(e.target); inDegree[e.target] = (inDegree[e.target] ?? 0) + 1 })
+
+  const queue  = nodes.filter(n => inDegree[n.id] === 0).map(n => n.id)
+  const order  = []
+  const seen   = new Set()
+  while (queue.length) {
+    const id = queue.shift()
+    if (seen.has(id)) continue
+    seen.add(id); order.push(id)
+    ;(adjList[id] ?? []).forEach(next => {
+      inDegree[next] = (inDegree[next] ?? 1) - 1
+      if (inDegree[next] <= 0) queue.push(next)
+    })
+  }
+  // Append any nodes not reached (disconnected)
+  nodes.forEach(n => { if (!seen.has(n.id)) order.push(n.id) })
+  return order
+}
+
+function simulateExecution(code, nodes, lang) {
+  const lines    = code.split('\n')
+  const lineMap  = buildLineMap(nodes, lines)
+  const ordered  = topoOrder(nodes, []) // We don't receive edges here; fallback to y-sort
+
+  const executedNodes  = []
+  const riskNodes      = []   // [{ id, risks: string[] }]
+  const predictedNodes = []   // conditional branches
+
+  // Detect file-level risks
+  const fileRisks = codeRisks(code)
+
+  // Sort nodes by Y position as a proxy for execution order
+  const sorted = [...nodes].sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0))
+
+  for (const node of sorted) {
+    const d        = node.data ?? node
+    const nodeType = d.nodeType ?? node.nodeType ?? 'call'
+    const lineRange = lineMap[node.id]
+
+    // Extract the source snippet for this node (best-effort)
+    const snippet = lineRange
+      ? lines.slice(lineRange.start - 1, lineRange.end).join('\n')
+      : (d.label ?? node.label ?? '')
+
+    const localRisks = codeRisks(snippet)
+
+    if (nodeType === 'error') {
+      riskNodes.push({ id: node.id, risks: ['Known error path'] })
+    } else if (localRisks.length > 0) {
+      riskNodes.push({ id: node.id, risks: localRisks })
+    } else if (nodeType === 'decision') {
+      predictedNodes.push(node.id)   // conditional — highlight as predicted
+    } else if (nodeType === 'loop') {
+      // Loops are predicted (we don't know iteration count)
+      predictedNodes.push(node.id)
+    } else {
+      executedNodes.push(node.id)
+    }
+  }
+
+  // Global file risks → mark the entry node as risky too if high-severity
+  const highRisk = fileRisks.filter(r => r.includes('null') || r.includes('Assignment'))
+  if (highRisk.length > 0 && executedNodes.length > 0) {
+    const entryNode = sorted.find(n => (n.data ?? n).nodeType === 'entry')
+    if (entryNode) {
+      const wasExec = executedNodes.indexOf(entryNode.id)
+      if (wasExec !== -1) executedNodes.splice(wasExec, 1)
+      riskNodes.unshift({ id: entryNode.id, risks: highRisk })
+    }
+  }
+
+  return { executedNodes, riskNodes, predictedNodes, fileRisks, mode: 'simulation' }
 }
 
 // ── React Flow graph builder ───────────────────────────────────────────────────
@@ -256,7 +519,6 @@ function buildReactFlowGraph({ nodes = [], edges = [] }) {
     adjList[e.source]  = [...(adjList[e.source] ?? []), e.target]
   })
 
-  // BFS level assignment
   const level = {}
   let queue = nodes.filter(n => (inDegree[n.id] ?? 0) === 0).map(n => n.id)
   if (queue.length === 0 && nodes.length > 0) {
@@ -277,7 +539,7 @@ function buildReactFlowGraph({ nodes = [], edges = [] }) {
 
   const levelCols = {}
   const positions = {}
-  const XGAP = 280, YGAP = 140, IX = 400, IY = 60
+  const XGAP = 360, YGAP = 240, IX = 620, IY = 80
 
   nodes.forEach(n => {
     const lvl = level[n.id] ?? 0
@@ -289,15 +551,17 @@ function buildReactFlowGraph({ nodes = [], edges = [] }) {
   })
 
   const rfNodes = nodes.map(n => ({
-    id:       n.id,
-    type:     'flowNode',
-    position: positions[n.id] ?? { x: IX, y: IY },
-    data: {
-      nodeType:    n.type ?? 'call',
-      label:       n.label ?? n.id,
-      description: n.description ?? null,
-      errorMsg:    n.errorMsg ?? null,
-    },
+    id:          n.id,
+    type:        'flowNode',
+    position:    positions[n.id] ?? { x: IX, y: IY },
+    // Flat — FlowView reads these directly (not via .data)
+    nodeType:    n.type ?? 'call',
+    label:       n.label ?? n.id,
+    description: n.description ?? null,
+    errorMsg:    n.errorMsg ?? null,
+    line:        n.line ?? null,    // source line number for error mapping
+    width:       260,
+    height:      100,
   }))
 
   const rfEdges = edges.map(e => {

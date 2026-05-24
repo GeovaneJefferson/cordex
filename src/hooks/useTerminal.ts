@@ -10,23 +10,25 @@ interface UseTerminalOptions {
 export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<any>(null);
-  const fitAddonRef = useRef<any>(null); // Save fit addon ref for manual external canvas resizing
+  const fitAddonRef = useRef<any>(null);
+  const disposedRef = useRef(false);                    // ← tracks dispose state
   const cleanupFns = useRef<Array<() => void>>([]);
 
   const destroy = useCallback(async () => {
+    disposedRef.current = true;                         // ← mark as dead
     cleanupFns.current.forEach(fn => fn());
     cleanupFns.current = [];
     await terminalService.destroy(id);
   }, [id]);
 
-  // Expose sizing helper function up into React components
   const fitTerminal = useCallback(() => {
+    if (disposedRef.current) return;                    // ← safety check
     if (fitAddonRef.current && termRef.current) {
       try {
         fitAddonRef.current.fit();
         terminalService.resize(id, termRef.current.cols, termRef.current.rows);
       } catch (err) {
-        console.warn("Terminal fit deferred:", err);
+        // ignore resize errors after dispose
       }
     }
   }, [id]);
@@ -34,6 +36,7 @@ export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
   useEffect(() => {
     if (!containerRef.current) return;
     let active = true;
+    disposedRef.current = false;
 
     async function init() {
       try {
@@ -59,11 +62,13 @@ export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
         term.open(containerRef.current);
-        
+
+        (window as any).__xterm = term;
+        (window as any).__terminalId = id;
+
         fitAddonRef.current = fitAddon;
         termRef.current = term;
 
-        // Run early check configuration sizing options mapping
         fitAddon.fit();
 
         const res = await terminalService.create(id, cwd ?? '', term.cols, term.rows);
@@ -72,26 +77,25 @@ export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
           return;
         }
 
-        // PTY → xterm
         const offData = terminalService.onData(id, data => {
           term.write(data);
           onData?.(data);
         });
 
-        // xterm → PTY
         const inputDispose = term.onData(data => terminalService.write(id, data));
 
-        // PTY exit
         const offExit = terminalService.onExit(id, ({ exitCode }) => {
           term.writeln(`\r\n\x1b[90mProcess exited (${exitCode})\x1b[0m`);
         });
 
-        // Auto-resize observing layer
+        // ── Resize observer with dispose guard ──────────────────────
         const obs = new ResizeObserver(() => {
-          // Only trigger fits if container has explicit physical volume dimensions
+          if (disposedRef.current) return;               // ← prevent crash
           if (containerRef.current && containerRef.current.clientWidth > 0) {
-            fitAddon.fit();
-            terminalService.resize(id, term.cols, term.rows);
+            try {
+              fitAddon.fit();
+              terminalService.resize(id, term.cols, term.rows);
+            } catch {}
           }
         });
         if (containerRef.current) obs.observe(containerRef.current);
@@ -101,7 +105,10 @@ export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
           () => offExit?.(),
           () => inputDispose.dispose(),
           () => obs.disconnect(),
-          () => term.dispose(),
+          () => {
+            disposedRef.current = true;
+            term.dispose();
+          },
         ];
       } catch {
         if (containerRef.current) {
@@ -119,7 +126,7 @@ export function useTerminal({ id, cwd, onData }: UseTerminalOptions) {
       active = false;
       destroy();
     };
-  }, [id, cwd]);  // eslint-disable-line
+  }, [id, cwd]);
 
   return { containerRef, termRef, fitTerminal, destroy };
 }

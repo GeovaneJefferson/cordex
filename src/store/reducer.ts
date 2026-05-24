@@ -1,4 +1,4 @@
-import { AppState, AppAction } from '../types';
+import { AppState, AppAction, Tab } from '../types';
 
 export const initialState: AppState = {
   projectRoot: null,
@@ -7,6 +7,7 @@ export const initialState: AppState = {
   activeTabId: null,
   splitTabId: null,
   terminalVisible: false,
+  chatVisible: false,
   hardware: null,
   settings: { theme: 'atom-one-light' },
   analysisResult: '',
@@ -29,6 +30,7 @@ export const initialState: AppState = {
   // ── New state ──────────────────────────────────────────────────────────
   browserVisible: false,
   commandPaletteOpen: false,
+  historyPanelVisible: false,
 };
 
 export function reducer(state: AppState, action: AppAction): AppState {
@@ -51,6 +53,12 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     case 'TOGGLE_AI_SETTINGS':
       return { ...state, aiSettingsOpen: !state.aiSettingsOpen };
+    
+    case 'TOGGLE_CHAT_PANEL':
+      return { ...state, chatVisible: !state.chatVisible };
+
+    case 'TOGGLE_HISTORY_PANEL':
+      return { ...state, historyPanelVisible: !state.historyPanelVisible };
 
     // ─────────────────────── SPLIT EDITOR ──────────────────────────────
     case 'SET_SPLIT_TAB':
@@ -168,6 +176,38 @@ export function reducer(state: AppState, action: AppAction): AppState {
     // ─────────────────────── CONTEXT MENU ──────────────────────────────
     case 'SET_CONTEXT_MENU':
       return { ...state, contextMenu: action.menu };
+
+    // ─────────────────────── NEW FILE ──────────────────────────────
+    case 'NEW_FILE': {
+      // Create a unique ID for the untitled tab
+      const id = `untitled::${Date.now()}`;
+      const name = `Untitled-${state.tabs.filter(t => t.id.startsWith('untitled::')).length + 1}`;
+      const newTab: Tab = {
+        id,
+        path: id,
+        name,
+        content: '',
+        language: 'plaintext',
+        isDirty: false,
+        tabType: 'file',
+      };
+      return {
+        ...state,
+        tabs: [...state.tabs, newTab],
+        activeTabId: id,
+      };
+    }
+
+    // ─────────────────────── SAVE AS ──────────────────────────────
+    case 'UPDATE_TAB_PATH':
+      return {
+        ...state,
+        tabs: state.tabs.map(tab =>
+        tab.id === action.id
+        ? { ...tab, path: action.path, name: action.name ?? tab.name }
+        : tab
+        ),
+      };
 
     default:
       return state;

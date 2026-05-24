@@ -10,21 +10,116 @@ contextBridge.exposeInMainWorld('Cordex', {
     docstring: (p) => ipcRenderer.invoke('ai:docstring', p),
     fixError:  (p) => ipcRenderer.invoke('ai:fix-error', p),
     onChunk: (cb) => { ipcRenderer.on('ai:analyze:chunk', (_e, c) => cb(c)) },
+    // ★ This is the function the Documentation button calls
+    documentProject: (root, model) => ipcRenderer.invoke('ai:document-project', { projectRoot: root, model }),
+    chatStream: (payload, callbacks) => {
+      const { onChunk, onDone, onError } = callbacks || {};
+      ipcRenderer.send('ai:chatStream:start', payload);
+
+      const chunkHandler = (_e, text) => onChunk?.(text);
+      const doneHandler = () => {
+        ipcRenderer.removeListener('ai:chatStream:chunk', chunkHandler);
+        ipcRenderer.removeListener('ai:chatStream:done', doneHandler);
+        ipcRenderer.removeListener('ai:chatStream:error', errorHandler);
+        onDone?.();
+      };
+      const errorHandler = (_e, err) => {
+        doneHandler();
+        onError?.(err);
+      };
+
+      ipcRenderer.on('ai:chatStream:chunk', chunkHandler);
+      ipcRenderer.on('ai:chatStream:done', doneHandler);
+      ipcRenderer.on('ai:chatStream:error', errorHandler);
+
+      return () => {
+        ipcRenderer.removeListener('ai:chatStream:chunk', chunkHandler);
+        ipcRenderer.removeListener('ai:chatStream:done', doneHandler);
+        ipcRenderer.removeListener('ai:chatStream:error', errorHandler);
+        ipcRenderer.send('ai:chatStream:abort');
+      };
+    },
+
+    // ── AI Router (autocomplete + reasoning agent + embeddings) ──────
+    autocomplete: (p) => ipcRenderer.invoke('ai:autocomplete', p),
+    autocompleteAbort: () => ipcRenderer.send('ai:autocomplete:abort'),
+
+    reason: (payload, callbacks) => {
+      const { onChunk, onDone, onError } = callbacks || {};
+      ipcRenderer.invoke('ai:reason', payload).then(result => {
+        onDone?.(result);
+      }).catch(err => onError?.(err?.message));
+
+      const chunkHandler = (_e, text) => onChunk?.(text);
+      ipcRenderer.on('ai:reason:chunk', chunkHandler);
+      const doneHandler  = () => { ipcRenderer.removeListener('ai:reason:chunk', chunkHandler); ipcRenderer.removeListener('ai:reason:done', doneHandler); };
+      ipcRenderer.on('ai:reason:done', doneHandler);
+      return () => { ipcRenderer.send('ai:reason:abort'); doneHandler(); };
+    },
+    reasonAbort: () => ipcRenderer.send('ai:reason:abort'),
+
+    embedProject: (projectRoot) => ipcRenderer.invoke('ai:embed-project', { projectRoot }),
+    embedUpdateFile: (filePath, content) => ipcRenderer.invoke('ai:embed-update-file', { filePath, content }),
+    embedAbort: () => ipcRenderer.send('ai:embed-abort'),
+    retrievalStatus: () => ipcRenderer.invoke('ai:retrieval-status'),
+    retrievalSearch: (query, topK) => ipcRenderer.invoke('ai:retrieval-search', { query, topK }),
+
+    onEmbedProgress: (cb) => { const fn = (_e, d) => cb(d); ipcRenderer.on('ai:embed:progress', fn); return () => ipcRenderer.removeListener('ai:embed:progress', fn); },
+    onEmbedDone:     (cb) => { const fn = (_e, d) => cb(d); ipcRenderer.on('ai:embed:done', fn);     return () => ipcRenderer.removeListener('ai:embed:done', fn); },
+    onReasonChunk:   (cb) => { const fn = (_e, t) => cb(t); ipcRenderer.on('ai:reason:chunk', fn);   return () => ipcRenderer.removeListener('ai:reason:chunk', fn); },
   },
+
+  // ═══════════════════════ Git ═══════════════════════
+  git: {
+    status:       (cwd)        => ipcRenderer.invoke('git:status', { cwd }),
+    diff:         (cwd, path, staged) => ipcRenderer.invoke('git:diff', { cwd, filePath: path, staged }),
+    stage:        (cwd, path)  => ipcRenderer.invoke('git:stage', { cwd, filePath: path }),
+    unstage:      (cwd, path)  => ipcRenderer.invoke('git:unstage', { cwd, filePath: path }),
+    stageAll:     (cwd)        => ipcRenderer.invoke('git:stage-all', { cwd }),
+    discard:      (cwd, path)  => ipcRenderer.invoke('git:discard', { cwd, filePath: path }),
+    commit:       (cwd, msg)   => ipcRenderer.invoke('git:commit', { cwd, message: msg }),
+    push:         (cwd)        => ipcRenderer.invoke('git:push', { cwd }),
+    pull:         (cwd)        => ipcRenderer.invoke('git:pull', { cwd }),
+    log:          (cwd, limit) => ipcRenderer.invoke('git:log', { cwd, limit }),
+    init:         (cwd)        => ipcRenderer.invoke('git:init', { cwd }),
+    branchList:   (cwd)        => ipcRenderer.invoke('git:branch-list', { cwd }),
+    createBranch: (cwd, name)  => ipcRenderer.invoke('git:create-branch', { cwd, name }),
+    checkout:     (cwd, name)  => ipcRenderer.invoke('git:checkout', { cwd, name }),
+    merge:        (cwd, branch)=> ipcRenderer.invoke('git:merge', { cwd, branch }),
+    untrack:      (cwd, path)  => ipcRenderer.invoke('git:untrack', { cwd, filePath: path }),
+  },
+
+  // ═══════════════════════ Local History ═══════════════════════
+  history: {
+    save:    (args)            => ipcRenderer.invoke('history:save', args),
+    list:    (filePath)        => ipcRenderer.invoke('history:list', filePath),
+    restore: (snapshotId)      => ipcRenderer.invoke('history:restore', snapshotId),
+    delete:  (args)            => ipcRenderer.invoke('history:delete', args),
+  },
+
+  // ═══════════════════════ LSP ═══════════════════════
+  lsp: {
+    connect: (language, projectRoot) => ipcRenderer.invoke('lsp:connect', { language, projectRoot }),
+    sendRequest: (language, method, params) => ipcRenderer.invoke('lsp:send', { language, method, params }),
+  },
+
   fs: {
-    openProject:  ()          => ipcRenderer.invoke('fs:openProject'),
-    readDir:      (d)         => ipcRenderer.invoke('fs:readDir', d),
-    readFile:     (p)         => ipcRenderer.invoke('fs:readFile', p),
-    writeFile:    (p, c)      => ipcRenderer.invoke('fs:writeFile', { filePath: p, content: c }),
-    createFile:   (d, n)      => ipcRenderer.invoke('fs:createFile', { dirPath: d, name: n }),
-    createFolder: (d, n)      => ipcRenderer.invoke('fs:createFolder', { dirPath: d, name: n }),
-    rename:       (op, nn)    => ipcRenderer.invoke('fs:rename', { oldPath: op, newName: nn }),
-    delete:       (p)         => ipcRenderer.invoke('fs:delete', p),
-    move:         (s, d)      => ipcRenderer.invoke('fs:move', { srcPath: s, destDir: d }),
-    search:       (params)    => ipcRenderer.invoke('fs:search', params),
-    watch:        (d)         => ipcRenderer.invoke('fs:watch', d),
-    stopWatch:    ()          => ipcRenderer.invoke('fs:stopWatch'),
-    revealInExplorer: (p) => ipcRenderer.invoke('fs:revealInExplorer', p),
+    openProject:    ()         => ipcRenderer.invoke('fs:openProject'),
+    openFileDialog: ()         => ipcRenderer.invoke('fs:openFileDialog'),
+    readDir:        (d)        => ipcRenderer.invoke('fs:readDir', d),
+    readFile:       (p)        => ipcRenderer.invoke('fs:readFile', p),
+    writeFile:      (p, c)     => ipcRenderer.invoke('fs:writeFile', { filePath: p, content: c }),
+    saveAs:         (n)        => ipcRenderer.invoke('fs:saveAs', n),
+    createFile:     (d, n)     => ipcRenderer.invoke('fs:createFile', { dirPath: d, name: n }),
+    createFolder:   (d, n)     => ipcRenderer.invoke('fs:createFolder', { dirPath: d, name: n }),
+    rename:         (op, nn)   => ipcRenderer.invoke('fs:rename', { oldPath: op, newName: nn }),
+    delete:         (p)        => ipcRenderer.invoke('fs:delete', p),
+    move:           (s, d)     => ipcRenderer.invoke('fs:move', { srcPath: s, destDir: d }),
+    search:         (params)   => ipcRenderer.invoke('fs:search', params),
+    watch:          (d)        => ipcRenderer.invoke('fs:watch', d),
+    stopWatch:      ()         => ipcRenderer.invoke('fs:stopWatch'),
+    revealInExplorer: (p)      => ipcRenderer.invoke('fs:revealInExplorer', p),
+    generateProjectDocs: (root) => ipcRenderer.invoke('fs:generateProjectDocs', root),
     onChange: (cb) => {
       const fn = (_e, ev) => cb(ev)
       ipcRenderer.on('fs:changed', fn)
@@ -68,18 +163,6 @@ contextBridge.exposeInMainWorld('Cordex', {
     list: () => ipcRenderer.invoke('ollama:list'),
     ping: () => ipcRenderer.invoke('ollama:ping'),
   },
-  llama: {
-    start:      (opts)   => ipcRenderer.invoke('llama:start', opts),
-    stop:       ()       => ipcRenderer.invoke('llama:stop'),
-    status:     ()       => ipcRenderer.invoke('llama:status'),
-    saveConfig: (cfg)    => ipcRenderer.invoke('llama:save-config', cfg),
-    onStatus: (cb) => {
-      const fn = (_e, d) => cb(d)
-      ipcRenderer.on('llama:status-changed', fn)
-      return () => ipcRenderer.removeListener('llama:status-changed', fn)
-    },
-  },
-  // Session persistence
   session: {
     save: (data) => ipcRenderer.invoke('session:save', data),
     load: ()     => ipcRenderer.invoke('session:load'),
@@ -87,9 +170,13 @@ contextBridge.exposeInMainWorld('Cordex', {
 })
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  saveFlow:     (fh, fd) => ipcRenderer.invoke('save-flow', fh, fd),
-  loadFlow:     (fh)     => ipcRenderer.invoke('load-flow', fh),
-  analyzeFlow:  (code)   => ipcRenderer.invoke('analyze-flow', code),
+  saveFlow:       (fh, fd) => ipcRenderer.invoke('save-flow',    fh, fd),
+  loadFlow:       (fh)     => ipcRenderer.invoke('load-flow',    fh),
+  analyzeFlow:    (code)   => ipcRenderer.invoke('analyze-flow', code),
+  // ── Execution / simulation engine ────────────────────────────────
+  runFlow:        (p) => ipcRenderer.invoke('flow:run',         p),
+  simulateFlow:   (p) => ipcRenderer.invoke('flow:simulate',    p),
+  detectFlowMode: (p) => ipcRenderer.invoke('flow:detect-mode', p),
   deleteFlow:   (fh)     => ipcRenderer.invoke('delete-flow', fh),
   ollamaStatus: ()       => ipcRenderer.invoke('ollama-status'),
   systemMemory: ()       => ipcRenderer.invoke('system-memory'),

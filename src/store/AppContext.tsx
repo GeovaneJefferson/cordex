@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
-import { AppState, AppAction, initialState, reducer } from './reducer';
+import { initialState, reducer } from './reducer';
+import type { AppState, AppAction } from '../types';
+import { detectLanguage } from '../utils/fileIcons';
 
 const AppContext = createContext<{
   state: AppState;
@@ -27,19 +29,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         (window as any).__cordexRoot = session.projectRoot;
       }
       if (session.tabs?.length) {
-        session.tabs.forEach((tab: any) => dispatch({ type: 'ADD_TAB', tab }));
+        session.tabs.forEach((tab: any) => {
+          // FIX: re-detect language for tabs saved before language support was added.
+          // If stored as 'plaintext' but the filename has a known extension, upgrade it.
+          if ((!tab.language || tab.language === 'plaintext') && tab.name) {
+            const detected = detectLanguage(tab.name);
+            if (detected && detected !== 'plaintext') tab.language = detected;
+          }
+          dispatch({ type: 'ADD_TAB', tab });
+        });
         if (session.activeTabId) dispatch({ type: 'SET_ACTIVE_TAB', id: session.activeTabId });
       }
     });
 
-    // Probe llama-server status
+    // Probe Ollama — uses Cordex.ollama.ping() (the real API).
+    // Cordex.llama does NOT exist; the old call was silently returning undefined.
     probeLlama(dispatch);
-    const interval = setInterval(() => probeLlama(dispatch), 15000);
-
-    // Listen for llama-server status changes from main process
-    Cordex?.llama?.onStatus?.((d: any) => {
-      dispatch({ type: 'SET_LLAMA_STATUS', status: d.status, error: d.error });
-    });
+    const interval = setInterval(() => probeLlama(dispatch), 15_000);
 
     return () => clearInterval(interval);
   }, []);
@@ -62,16 +68,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
-      {children}
+    {children}
     </AppContext.Provider>
   );
 };
 
+// FIX: was calling Cordex.llama.status() which doesn't exist.
+// Now uses Cordex.ollama.ping() (the actual IPC bridge).
 async function probeLlama(dispatch: React.Dispatch<AppAction>) {
   try {
-    const s = await Cordex?.llama?.status?.();
-    if (s) dispatch({ type: 'SET_LLAMA_STATUS', status: s.status, error: s.error ?? null });
-  } catch {}
+    const res = await Cordex?.ollama?.ping?.();
+    if (res?.ok === true) {
+      dispatch({ type: 'SET_LLAMA_STATUS', status: 'running', error: null });
+    } else {
+      dispatch({ type: 'SET_LLAMA_STATUS', status: 'stopped', error: null });
+    }
+  } catch {
+    dispatch({ type: 'SET_LLAMA_STATUS', status: 'stopped', error: null });
+  }
 }
 
 export const useAppState = () => useContext(AppContext);

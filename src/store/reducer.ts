@@ -179,7 +179,6 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     // ─────────────────────── NEW FILE ──────────────────────────────
     case 'NEW_FILE': {
-      // Create a unique ID for the untitled tab
       const id = `untitled::${Date.now()}`;
       const name = `Untitled-${state.tabs.filter(t => t.id.startsWith('untitled::')).length + 1}`;
       const newTab: Tab = {
@@ -203,9 +202,21 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         tabs: state.tabs.map(tab =>
-        tab.id === action.id
-        ? { ...tab, path: action.path, name: action.name ?? tab.name }
-        : tab
+          tab.id === action.id
+            ? { ...tab, path: action.path, name: action.name ?? tab.name }
+            : tab
+        ),
+      };
+
+    // BUG FIX: update language after Save As so Monaco reinitialises to the
+    // correct mode and the session persists the right language string.
+    case 'UPDATE_TAB_LANGUAGE':
+      return {
+        ...state,
+        tabs: state.tabs.map(tab =>
+          tab.id === action.id
+            ? { ...tab, language: action.language }
+            : tab
         ),
       };
 

@@ -31,7 +31,7 @@ function safeRequireHandler(modulePath, arg) {
 }
 
 function createWindow() {
-  const isDev = process.env.NODE_ENV !== 'production'
+  const isDev = !app.isPackaged && !process.argv.includes('--app')
   const settings = loadSettings()
   const bounds = settings.windowBounds ?? { width: 1400, height: 900 }
 
@@ -79,21 +79,28 @@ function createWindow() {
     mainWin.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  // Each handler is isolated — one crash won't kill the others
-  safeRequireHandler('./handlers/aiHandler.cjs', mainWin)
-  safeRequireHandler('./handlers/fileSystemHandler.cjs', mainWin)
-  safeRequireHandler('./handlers/terminalHandler.cjs', mainWin)
-  safeRequireHandler('./handlers/hardwareHandler.cjs', mainWin)
-  safeRequireHandler('./handlers/flowHandler.cjs', undefined)
-  safeRequireHandler('./handlers/legacyHandler.cjs', mainWin)
-  safeRequireHandler('./handlers/settingsHandler.cjs', undefined)
-  safeRequireHandler('./handlers/windowHandler.cjs', mainWin)
-  safeRequireHandler('./handlers/ollamaHandler.cjs', undefined)
-  safeRequireHandler('./handlers/chatHandler.cjs', mainWin)
-  safeRequireHandler('./handlers/lspHandler.cjs', undefined)
-  safeRequireHandler('./utils/gitHandler.cjs', undefined)
-  safeRequireHandler('./handlers/historyHandler.cjs', undefined)
-  safeRequireHandler('./services/aiRouter.cjs', mainWin)
+  mainWin.once('ready-to-show', () => {
+    mainWin.show()
+    // Load heavy handlers asynchronously, without blocking the UI
+    setImmediate(() => {
+      safeRequireHandler('./handlers/fileSystemHandler.cjs', mainWin)
+      safeRequireHandler('./handlers/terminalHandler.cjs', mainWin)
+      safeRequireHandler('./handlers/hardwareHandler.cjs', mainWin)
+      safeRequireHandler('./handlers/flowHandler.cjs', undefined)
+      safeRequireHandler('./handlers/legacyHandler.cjs', mainWin)
+      safeRequireHandler('./handlers/settingsHandler.cjs', undefined)
+      safeRequireHandler('./handlers/windowHandler.cjs', mainWin)
+      
+      safeRequireHandler('./handlers/ollamaHandler.cjs', undefined)
+      safeRequireHandler('./handlers/chatHandler.cjs', mainWin)
+      safeRequireHandler('./handlers/aiHandler.cjs', mainWin)
+      safeRequireHandler('./services/aiRouter.cjs', mainWin)
+
+      safeRequireHandler('./handlers/lspHandler.cjs', undefined)
+      safeRequireHandler('./utils/gitHandler.cjs', undefined)
+      safeRequireHandler('./handlers/historyHandler.cjs', undefined)
+    })
+  })
 
   mainWin.on('closed', () => {
     if (global.ptyInstances?.size) {
@@ -108,3 +115,5 @@ function createWindow() {
 app.whenReady().then(createWindow)
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+
+  

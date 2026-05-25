@@ -4,6 +4,7 @@
   "private": true,
   "main": "electron/main.cjs",
   "scripts": {
+    "start": "electron . --app",
     "dev": "vite",
     "build": "vite build",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
@@ -37,6 +38,7 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.30.3",
     "react-syntax-highlighter": "^16.1.1",
+    "react-zoom-pan-pinch": "^4.0.3",
     "reactflow": "^11.11.4",
     "remark-gfm": "^4.0.1",
     "vscode-languageserver": "^9.0.1",

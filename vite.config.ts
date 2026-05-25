@@ -12,4 +12,5 @@ export default defineConfig({
       languageWorkers: ['editorWorkerService', 'typescript', 'json']
     }),
   ],
+  base: './',
 })

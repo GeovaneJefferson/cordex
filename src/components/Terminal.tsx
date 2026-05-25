@@ -73,6 +73,16 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
     };
   }, [termRef, copySelection]);
 
+  // ── Focus the terminal when it becomes visible ─────────────────────────────
+  useEffect(() => {
+    if (isVisible) {
+      const timer = setTimeout(() => {
+        termRef.current?.focus();
+      }, 80); // short delay to let the DOM update
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, termRef]);
+
   // ── Right‑click context menu ─────────────────────────────
   useEffect(() => {
     const container = containerRef.current;

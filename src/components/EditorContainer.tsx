@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { TabBar } from './TabBar';
 import { SplitEditor } from './SplitEditor';
 import { BottomPanel } from './BottomPanel';
@@ -68,9 +68,35 @@ export const EditorContainer: React.FC = () => {
   const [browserMode,     setBrowserMode]    = useState<'phone' | 'desktop'>('desktop');
   const [rightPanelWidth, setRightPanelWidth] = useState(350);
   const [isDraggingResizer, setIsDraggingResizer] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const dragging     = useRef(false);
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const resizerRef    = useRef<HTMLDivElement>(null);
 
+  // ── Right-panel resize — native events only (avoids Electron synthetic/native mismatch)
+  useEffect(() => {
+    const el = resizerRef.current;
+    if (!el) return;
+    const onDown = (e: MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      let startW = rightPanelWidth;
+      const onMove = (mv: MouseEvent) => {
+        const w = Math.min(600, Math.max(250, startW + startX - mv.clientX));
+        setRightPanelWidth(w);
+      };
+      const onUp = () => {
+        setIsDraggingResizer(false);
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      setIsDraggingResizer(true);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    };
+    el.addEventListener('mousedown', onDown);
+    return () => el.removeEventListener('mousedown', onDown);
+  }, [rightPanelWidth]);
+
+  // ── toggleBrowser was missing its declaration ──────────────────────────
   const toggleBrowser = () => {
     if (!state.browserVisible && state.chatVisible) dispatch({ type: 'TOGGLE_CHAT_PANEL' });
     if (!state.browserVisible && state.historyPanelVisible) dispatch({ type: 'TOGGLE_HISTORY_PANEL' });
@@ -87,29 +113,6 @@ export const EditorContainer: React.FC = () => {
     if (!state.historyPanelVisible && state.browserVisible) dispatch({ type: 'TOGGLE_BROWSER' });
     if (!state.historyPanelVisible && state.chatVisible) dispatch({ type: 'TOGGLE_CHAT_PANEL' });
     dispatch({ type: 'TOGGLE_HISTORY_PANEL' });
-  };
-
-  const onDivider = (e: React.MouseEvent) => {
-    e.preventDefault();
-    dragging.current = true;
-    setIsDraggingResizer(true);
-    const startX = e.clientX;
-    const startWidth = rightPanelWidth;
-
-    const onMove = (mv: MouseEvent) => {
-      if (!dragging.current || !containerRef.current) return;
-      const dx = startX - mv.clientX;
-      const newWidth = Math.min(600, Math.max(250, startWidth + dx));
-      setRightPanelWidth(newWidth);
-    };
-    const onUp = () => {
-      dragging.current = false;
-      setIsDraggingResizer(false);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
   };
 
   const activeTab = state.tabs.find((t: Tab) => t.id === state.activeTabId);
@@ -219,15 +222,10 @@ export const EditorContainer: React.FC = () => {
         >
           {(state.browserVisible || state.chatVisible || state.historyPanelVisible) && (
             <div
-              onMouseDown={onDivider}
+              ref={resizerRef}
               style={{
-                position: 'absolute',
-                left: -4, top: 0, bottom: 0,
-                width: 4,
-                cursor: 'col-resize',
-                background: '#e2e8f0',
-                transition: 'background 0.15s',
-                zIndex: 10,
+                position: 'absolute', left: -4, top: 0, bottom: 0, width: 4,
+                cursor: 'col-resize', background: '#e2e8f0', transition: 'background 0.15s', zIndex: 10,
               }}
               onMouseEnter={e => (e.currentTarget.style.background = '#f97316')}
               onMouseLeave={e => (e.currentTarget.style.background = '#e2e8f0')}

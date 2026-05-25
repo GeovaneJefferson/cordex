@@ -1,26 +1,18 @@
+// embeddingIndex.cjs (SQLite version)
 'use strict'
-/**
- * embeddingIndex.cjs
- * Manages nomic-embed-text embeddings for the project repository.
- *
- * Storage: userData/embeddings.json  (flat JSON, fast for < 50k chunks)
- * Incremental: file hashes tracked — only re-embeds changed files.
- * Exposes events so the renderer can show indexing progress.
- */
-
-const path   = require('path')
-const fs     = require('fs-extra')
+const path = require('path')
+const fs = require('fs-extra')
 const crypto = require('crypto')
+const Database = require('better-sqlite3')
 const { EventEmitter } = require('events')
-const { chunkFile }    = require('./chunker.cjs')
+const { chunkFile } = require('./chunker.cjs')
 
-const OLLAMA_BASE   = 'http://127.0.0.1:11434'
-const EMBED_MODEL   = 'nomic-embed-text'
-const SKIP_DIRS     = new Set(['node_modules', '.git', 'dist', 'build', '__pycache__', '.venv', 'venv', '.next', 'coverage'])
-const SKIP_EXTS     = new Set(['png','jpg','jpeg','gif','webp','ico','svg','woff','woff2','ttf','eot','pdf','zip','tar','gz','db','sqlite'])
-const MAX_FILE_SIZE = 300 * 1024  // 300 KB
+const OLLAMA_BASE = 'http://127.0.0.1:11434'
+const EMBED_MODEL = 'nomic-embed-text'
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '__pycache__', '.venv', 'venv', '.next', 'coverage'])
+const SKIP_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'pdf', 'zip', 'tar', 'gz', 'db', 'sqlite'])
+const MAX_FILE_SIZE = 300 * 1024
 
-// ── Helpers ────────────────────────────────────────────────────────────
 function fileHash(content) {
   return crypto.createHash('sha1').update(content).digest('hex').slice(0, 12)
 }
@@ -29,58 +21,40 @@ function cosineSim(a, b) {
   let dot = 0, na = 0, nb = 0
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i]
-    na  += a[i] * a[i]
-    nb  += b[i] * b[i]
+    na += a[i] * a[i]
+    nb += b[i] * b[i]
   }
   return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0
 }
 
-// ── EmbeddingIndex class ───────────────────────────────────────────────
 class EmbeddingIndex extends EventEmitter {
   constructor() {
     super()
-    this._indexPath   = null   // set on first use
-    this._chunks      = []     // Array<{ filePath, startLine, endLine, text, hash, embedding }>
-    this._fileHashes  = {}     // filePath → sha1 of content
-    this._loaded      = false
-    this._indexing    = false
-    this._abortFlag   = false
+    this._db = null
+    this._indexing = false
+    this._abortFlag = false
   }
 
-  _getIndexPath() {
-    if (this._indexPath) return this._indexPath
+  _getDb() {
+    if (this._db) return this._db
     const { app } = require('electron')
-    this._indexPath = path.join(app.getPath('userData'), 'embeddings.json')
-    return this._indexPath
+    const dbPath = path.join(app.getPath('userData'), 'embeddings.db')
+    this._db = new Database(dbPath)
+    this._db.pragma('journal_mode = WAL')
+    this._db.exec(`
+      CREATE TABLE IF NOT EXISTS chunks (
+        filePath TEXT NOT NULL,
+        startLine INTEGER NOT NULL,
+        endLine INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        hash TEXT,
+        embedding TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_chunks_file ON chunks(filePath);
+    `)
+    return this._db
   }
 
-  // ── Persist / load ─────────────────────────────────────────────────
-  async _load() {
-    if (this._loaded) return
-    this._loaded = true
-    try {
-      const p = this._getIndexPath()
-      if (await fs.pathExists(p)) {
-        const data = await fs.readJson(p)
-        this._chunks     = data.chunks     ?? []
-        this._fileHashes = data.fileHashes ?? {}
-        console.log(`[embeddingIndex] loaded ${this._chunks.length} chunks`)
-      }
-    } catch (err) {
-      console.warn('[embeddingIndex] load error:', err.message)
-      this._chunks = []; this._fileHashes = {}
-    }
-  }
-
-  async _save() {
-    try {
-      await fs.outputJson(this._getIndexPath(), { chunks: this._chunks, fileHashes: this._fileHashes })
-    } catch (err) {
-      console.warn('[embeddingIndex] save error:', err.message)
-    }
-  }
-
-  // ── Embed a single text via Ollama ─────────────────────────────────
   async _embed(text) {
     const res = await fetch(`${OLLAMA_BASE}/api/embed`, {
       method: 'POST',
@@ -88,13 +62,11 @@ class EmbeddingIndex extends EventEmitter {
       body: JSON.stringify({ model: EMBED_MODEL, input: text }),
       signal: AbortSignal.timeout(10000),
     })
-    if (!res.ok) throw new Error(`Ollama embed HTTP ${res.status}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
-    // nomic-embed-text returns { embeddings: [[...]] }
     return data.embeddings?.[0] ?? data.embedding ?? null
   }
 
-  // ── Discover text files under projectRoot ─────────────────────────
   async _discoverFiles(projectRoot) {
     const result = []
     async function walk(dir) {
@@ -108,8 +80,7 @@ class EmbeddingIndex extends EventEmitter {
         } else {
           const ext = path.extname(ent.name).slice(1).toLowerCase()
           if (SKIP_EXTS.has(ext)) continue
-          let stat
-          try { stat = await fs.stat(fullPath) } catch { continue }
+          let stat; try { stat = await fs.stat(fullPath) } catch { continue }
           if (stat.size > MAX_FILE_SIZE) continue
           result.push(fullPath)
         }
@@ -119,33 +90,23 @@ class EmbeddingIndex extends EventEmitter {
     return result
   }
 
-  // ── Full index / incremental update ──────────────────────────────
-  /**
-   * indexProject(projectRoot) → { indexed, skipped, total }
-   * Incrementally embeds changed/new files, removes deleted ones.
-   */
   async indexProject(projectRoot) {
     if (this._indexing) return { error: 'already indexing' }
     this._indexing = true
     this._abortFlag = false
 
-    await this._load()
-
-    let indexed = 0
-    let skipped = 0
-    let errors  = 0
+    const db = this._getDb()
+    let indexed = 0, skipped = 0, errors = 0
 
     try {
       const filePaths = await this._discoverFiles(projectRoot)
-      const total     = filePaths.length
+      const total = filePaths.length
       this.emit('progress', { phase: 'discovering', total, indexed: 0 })
 
       // Remove chunks for deleted files
       const pathSet = new Set(filePaths)
-      this._chunks = this._chunks.filter(c => pathSet.has(c.filePath))
-      for (const fp of Object.keys(this._fileHashes)) {
-        if (!pathSet.has(fp)) delete this._fileHashes[fp]
-      }
+      db.prepare('DELETE FROM chunks WHERE filePath NOT IN (SELECT value FROM json_each(?))')
+        .run(JSON.stringify([...pathSet]))
 
       for (let i = 0; i < filePaths.length; i++) {
         if (this._abortFlag) break
@@ -154,21 +115,24 @@ class EmbeddingIndex extends EventEmitter {
 
         try {
           const content = await fs.readFile(fp, 'utf8')
-          const hash    = fileHash(content)
+          const hash = fileHash(content)
 
-          if (this._fileHashes[fp] === hash) { skipped++; continue }  // unchanged
+          // Check if already up to date
+          const existingHash = db.prepare('SELECT DISTINCT hash FROM chunks WHERE filePath = ?').pluck().get(fp)
+          if (existingHash === hash) { skipped++; continue }
 
-          // Remove old chunks for this file
-          this._chunks = this._chunks.filter(c => c.filePath !== fp)
+          // Delete old chunks for this file
+          db.prepare('DELETE FROM chunks WHERE filePath = ?').run(fp)
 
-          // Chunk + embed
           const chunks = chunkFile(fp, content)
+          const insert = db.prepare('INSERT INTO chunks (filePath, startLine, endLine, text, hash, embedding) VALUES (?,?,?,?,?,?)')
+
           for (const chunk of chunks) {
             if (this._abortFlag) break
             try {
               const embedding = await this._embed(chunk.text)
               if (embedding) {
-                this._chunks.push({ ...chunk, hash, embedding })
+                insert.run(fp, chunk.startLine, chunk.endLine, chunk.text, hash, JSON.stringify(embedding))
                 indexed++
               }
             } catch (e) {
@@ -176,16 +140,14 @@ class EmbeddingIndex extends EventEmitter {
               console.warn(`[embeddingIndex] embed error for ${fp}:`, e.message)
             }
           }
-
-          this._fileHashes[fp] = hash
         } catch (e) {
           errors++
           console.warn(`[embeddingIndex] file error ${fp}:`, e.message)
         }
       }
 
-      await this._save()
-      const result = { ok: true, indexed, skipped, errors, total: this._chunks.length }
+      const totalChunks = db.prepare('SELECT COUNT(*) FROM chunks').pluck().get()
+      const result = { ok: true, indexed, skipped, errors, total: totalChunks }
       this.emit('done', result)
       return result
     } catch (err) {
@@ -198,68 +160,51 @@ class EmbeddingIndex extends EventEmitter {
 
   abortIndexing() { this._abortFlag = true }
 
-  // ── Single-file update (called after each save) ───────────────────
   async updateFile(filePath, content) {
-    await this._load()
+    const db = this._getDb()
     const hash = fileHash(content)
-    if (this._fileHashes[filePath] === hash) return  // no change
+    const existingHash = db.prepare('SELECT hash FROM chunks WHERE filePath = ? LIMIT 1').pluck().get(filePath)
+    if (existingHash === hash) return
 
-    this._chunks = this._chunks.filter(c => c.filePath !== filePath)
-
+    db.prepare('DELETE FROM chunks WHERE filePath = ?').run(filePath)
     const chunks = chunkFile(filePath, content)
+    const insert = db.prepare('INSERT INTO chunks (filePath, startLine, endLine, text, hash, embedding) VALUES (?,?,?,?,?,?)')
+
     for (const chunk of chunks) {
       try {
         const embedding = await this._embed(chunk.text)
-        if (embedding) this._chunks.push({ ...chunk, hash, embedding })
-      } catch {}
+        if (embedding) insert.run(filePath, chunk.startLine, chunk.endLine, chunk.text, hash, JSON.stringify(embedding))
+      } catch { }
     }
-
-    this._fileHashes[filePath] = hash
-    await this._save()
   }
 
-  // ── Semantic search ───────────────────────────────────────────────
-  /**
-   * search(query, topK) → Array<{ filePath, startLine, endLine, text, score }>
-   */
   async search(query, topK = 10) {
-    await this._load()
-    if (this._chunks.length === 0) return []
+    const db = this._getDb();
+    // Only load up to 500 recent chunks as a simple cap
+    const rows = db.prepare(
+      'SELECT filePath, startLine, endLine, text, embedding FROM chunks WHERE embedding IS NOT NULL ORDER BY rowid DESC LIMIT 500'
+    ).all();
+    if (rows.length === 0) return [];
 
-    let queryEmbed
-    try {
-      queryEmbed = await this._embed(query)
-    } catch (err) {
-      console.warn('[embeddingIndex] query embed error:', err.message)
-      return []
-    }
+    let queryEmbed;
+    try { queryEmbed = await this._embed(query); } catch { return []; }
 
-    const scored = this._chunks
-      .filter(c => c.embedding?.length > 0)
-      .map(c => ({ ...c, score: cosineSim(queryEmbed, c.embedding) }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK)
-
-    return scored.map(c => ({
-      filePath:  c.filePath,
-      startLine: c.startLine,
-      endLine:   c.endLine,
-      text:      c.text,
-      score:     Math.round(c.score * 1000) / 1000,
-    }))
+    const scored = rows.map(row => ({
+      filePath: row.filePath,
+      startLine: row.startLine,
+      endLine: row.endLine,
+      text: row.text,
+      score: cosineSim(queryEmbed, JSON.parse(row.embedding)),
+    }));
+    return scored.sort((a, b) => b.score - a.score).slice(0, topK);
   }
 
-  // ── Status ────────────────────────────────────────────────────────
   async status() {
-    await this._load()
-    return {
-      chunks: this._chunks.length,
-      files:  Object.keys(this._fileHashes).length,
-      indexing: this._indexing,
-    }
+    const db = this._getDb()
+    const chunks = db.prepare('SELECT COUNT(*) FROM chunks').pluck().get()
+    const files = db.prepare('SELECT COUNT(DISTINCT filePath) FROM chunks').pluck().get()
+    return { chunks, files, indexing: this._indexing }
   }
 }
 
-// Singleton
-const index = new EmbeddingIndex()
-module.exports = index
+module.exports = new EmbeddingIndex()

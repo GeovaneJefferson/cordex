@@ -10,7 +10,6 @@ contextBridge.exposeInMainWorld('Cordex', {
     docstring: (p) => ipcRenderer.invoke('ai:docstring', p),
     fixError:  (p) => ipcRenderer.invoke('ai:fix-error', p),
     onChunk: (cb) => { ipcRenderer.on('ai:analyze:chunk', (_e, c) => cb(c)) },
-    // ★ This is the function the Documentation button calls
     documentProject: (root, model) => ipcRenderer.invoke('ai:document-project', { projectRoot: root, model }),
     chatStream: (payload, callbacks) => {
       const { onChunk, onDone, onError } = callbacks || {};
@@ -91,10 +90,10 @@ contextBridge.exposeInMainWorld('Cordex', {
 
   // ═══════════════════════ Local History ═══════════════════════
   history: {
-    save:    (args)            => ipcRenderer.invoke('history:save', args),
-    list:    (filePath)        => ipcRenderer.invoke('history:list', filePath),
-    restore: (snapshotId)      => ipcRenderer.invoke('history:restore', snapshotId),
-    delete:  (args)            => ipcRenderer.invoke('history:delete', args),
+    save:    (args)              => ipcRenderer.invoke('history:save',    args),
+    list:    (filePath)          => ipcRenderer.invoke('history:list',    filePath),
+    restore: (id, filePath)      => ipcRenderer.invoke('history:restore', { id, filePath }),
+    delete:  (args)              => ipcRenderer.invoke('history:delete',  args),
   },
 
   // ═══════════════════════ LSP ═══════════════════════

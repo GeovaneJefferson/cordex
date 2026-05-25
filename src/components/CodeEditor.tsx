@@ -3,6 +3,7 @@ import * as monaco from 'monaco-editor';
 import { useAppState } from '../store/AppContext';
 import { themes } from '../themes';
 import { Tab } from '../types';
+import { detectLanguage } from '../utils/fileIcons';
 
 // ── Theme registration ──────────────────────────────────────────────────
 let _themesReady = false;
@@ -166,7 +167,8 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
 
     monaco.editor.setTheme(themeRef.current);
     editorRef.current = editor;
-
+    (window as any).__activeEditor = editor;
+    
     // User edits → store
     const s1 = editor.onDidChangeModelContent(() => {
       if (ignoreRef.current) return;
@@ -196,11 +198,20 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
         const newPath = await (window as any).Cordex?.fs?.saveAs?.(t.name);
         if (!newPath) return;
         const fileName = newPath.split('/').pop() ?? 'Untitled';
+
+        // BUG FIX: detect language from the chosen filename so Monaco
+        // reinitialises to the correct mode (e.g. 'sql', 'gdscript') and the
+        // session persists the right language string instead of 'plaintext'.
+        const newLang = detectLanguage(fileName);
+
         dispatch({ type: 'UPDATE_TAB_PATH', id: t.id, path: newPath, name: fileName });
+        dispatch({ type: 'UPDATE_TAB_LANGUAGE', id: t.id, language: newLang });
+
         await (window as any).Cordex?.fs?.writeFile?.(newPath, content);
         dispatch({ type: 'MARK_TAB_SAVED', id: t.id });
         (window as any).Cordex?.history?.save?.({ filePath: newPath, content });
-        (window as any).Cordex?.ai?.embedUpdateFile?.(newPath, content);
+        window.dispatchEvent(new Event('cordex:history-updated'));
+        // (window as any).Cordex?.ai?.embedUpdateFile?.(newPath, content);
         const root = (window as any).__cordexRoot ?? state.projectRoot;
         if (root && newPath.startsWith(root)) {
           try {
@@ -215,7 +226,8 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
       (window as any).Cordex?.fs?.writeFile?.(t.path, content)?.then(() => {
         dispatch({ type: 'MARK_TAB_SAVED', id: tabId });
         (window as any).Cordex?.history?.save?.({ filePath: t.path, content });
-        (window as any).Cordex?.ai?.embedUpdateFile?.(t.path, content);
+        window.dispatchEvent(new Event('cordex:history-updated'));
+        // (window as any).Cordex?.ai?.embedUpdateFile?.(t.path, content);
         restoreScroll();
       });
     });
@@ -233,6 +245,7 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
       s2.dispose();
       editor.dispose();
       editorRef.current = null;
+      (window as any).__activeEditor = null;
     };
   }, [tabId, tab?.language]);
 
@@ -246,21 +259,18 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
     const model = editor.getModel();
     if (!model) return;
 
-    // BUG FIX: ALWAYS preserve scroll position — model.setValue() resets to top
+    // BUG FIX: preserve scroll + cursor, and use applyEdits (not pushEditOperations)
+    // for external syncs so Ctrl+Z undo history stays clean for the user's own edits.
     const scrollTop  = editor.getScrollTop();
     const scrollLeft = editor.getScrollLeft();
-
-    ignoreRef.current = true;
     const pos = editor.getPosition();
     const sel = editor.getSelection();
 
-    // Use pushEditOperations on both paths — it preserves undo history
-    // and never resets the viewport (unlike model.setValue)
-    model.pushEditOperations(
-      [],
-      [{ range: model.getFullModelRange(), text: tab.content }],
-      () => null
-    );
+    ignoreRef.current = true;
+
+    // applyEdits does NOT create an undo stop — external changes (AI, file restore,
+    // watcher) won't appear in the user's Ctrl+Z history.
+    model.applyEdits([{ range: model.getFullModelRange(), text: tab.content }]);
 
     if (pos) editor.setPosition(pos);
     if (sel) editor.setSelection(sel);
@@ -292,6 +302,7 @@ function mapLang(lang: string): string {
     python:'python', rust:'rust', cpp:'cpp', c:'c', go:'go', java:'java',
     css:'css', scss:'scss', json:'json', html:'html', markdown:'markdown',
     shell:'shell', yaml:'yaml', toml:'toml', rb:'ruby', php:'php',
+    sql:'sql',            // BUG FIX: .sql was falling through to plaintext
     gdscript:'gdscript',
     gd:'gdscript',        // BUG FIX: .gd files → GDScript highlighting
   };
@@ -353,7 +364,8 @@ export function registerGhostAutocomplete(): void {
         return { items: [] };
       }
     },
-    freeInlineCompletions() {},
+    // freeInlineCompletions() {},
+    disposeInlineCompletions() {},
   });
 }
 

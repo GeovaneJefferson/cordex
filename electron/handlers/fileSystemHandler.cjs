@@ -17,7 +17,7 @@ function detectLang(filename) {
     py: 'python', rs: 'rust', cpp: 'cpp', c: 'c', h: 'cpp', hpp: 'cpp',
     go: 'go', java: 'java', json: 'json', md: 'markdown', html: 'html',
     css: 'css', scss: 'scss', sh: 'shell', yaml: 'yaml', yml: 'yaml',
-    toml: 'toml', lua: 'lua',
+    toml: 'toml', lua: 'lua', sql: 'sql',
     gd: 'gdscript',
   }
   return map[ext] ?? 'plaintext'

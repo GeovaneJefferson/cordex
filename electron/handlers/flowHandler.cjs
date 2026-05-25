@@ -112,21 +112,23 @@ async function buildDependencyManifest(code, filePath, projectRoot) {
 
 function buildSystemPrompt(manifest) {
   const manifestSection = manifest
-    ? `\nYou have access to a dependency manifest for local imports. Use it to:\n- Identify cross-file function calls and represent them as nodes\n- Use SCOPED node IDs for cross-file calls: "filename:function_name" (e.g., "utils:read_file")\n- Show the data/call flow between files accurately\n\n${manifest}\n`
+    ? `\nDependency context (for cross-file calls only):\n${manifest}\n`
     : ''
 
-  return `You are a code flow analyzer. Analyze the given code and return ONLY a JSON object describing its logical flow.
-${manifestSection}
-Rules:
-- Every flow MUST start with a node id="entry" (type="entry") and end with id="exit" (type="exit")
-- Node types: "entry" | "exit" | "call" | "decision" | "loop" | "error" | "value" | "import"
-- For cross-file calls use scoped IDs: "depfile:funcname" and type="import"
-- Every node label must start with a verb
-- Represent ALL conditionals as "decision" nodes  
-- Group low-level steps into meaningful "call" nodes
-- Keep it under 16 nodes max (multi-file graphs may use up to 16)
+  return `You are a code flow analyzer. Analyze the given code and return ONLY a JSON object describing its RUNTIME LOGIC flow.
 
-Return ONLY valid JSON, no markdown fences, no explanation:
+STRICT RULES — READ CAREFULLY:
+1. Do NOT create nodes for import statements, require() calls, or module loading. These are FORBIDDEN.
+2. Do NOT create nodes for variable declarations at module scope unless they are critical to the logic.
+3. ONLY represent runtime behavior: function calls, conditions, loops, returns, error paths, data transforms.
+4. Start with id="entry" (type="entry"), end with id="exit" (type="exit").
+5. Node types: "entry" | "exit" | "call" | "decision" | "loop" | "error" | "value"
+6. Every node label must start with a verb (e.g. "Check driver", "Return result", "Handle error")
+7. Include the source line number in the "line" field for each node (best estimate from the code).
+8. Max 14 nodes. Group fine-grained steps into meaningful blocks.
+9. Every function called must be represented by its call, NOT the import that brought it in.
+${manifestSection}
+Return ONLY valid JSON, no markdown, no explanation:
 {"nodes":[{"id":"string","type":"string","label":"string","description":"string","line":0}],"edges":[{"source":"string","target":"string","label":"string"}]}`
 }
 
@@ -257,6 +259,9 @@ const os         = require('os')
 const EXECUTABLE_LANGS = new Set(['python', 'javascript', 'typescript', 'node', 'cpp', 'c', 'cjs', 'mjs'])
 const EXT_TO_LANG = { py: 'python', js: 'javascript', cjs: 'javascript', mjs: 'javascript', ts: 'typescript', tsx: 'typescript', cpp: 'cpp', cc: 'cpp', c: 'c' }
 
+// Patterns that indicate a real error even when exit code is 0 (e.g. caught exceptions logged to stderr)
+const STDERR_ERROR_RE = /(?:Error|Exception|Traceback|CRITICAL|FATAL|NameError|TypeError|ValueError|AttributeError|ImportError|KeyError|IndexError|RuntimeError|PermissionError)\b/i
+
 function detectLangFromPath(filePath) {
   const ext = path.extname(filePath).slice(1).toLowerCase()
   return EXT_TO_LANG[ext] || ext || 'unknown'
@@ -368,7 +373,13 @@ async function executeCode(code, lang, timeout = 12000) {
     return {
       ...result,
       mode: 'execution',
-      errorLine: result.success ? null : extractErrorLine(result.stderr, lang),
+      // Exit 0 with stderr containing errors = "success with warnings"
+      // Python's try/except can swallow errors and still exit 0.
+      // We check for error/exception patterns in stderr even on clean exit.
+      hasStderrErrors: result.stderr ? STDERR_ERROR_RE.test(result.stderr) : false,
+      errorLine: result.success && !STDERR_ERROR_RE.test(result.stderr ?? '')
+        ? null
+        : extractErrorLine(result.stderr, lang),
     }
   } finally {
     try { await fs.remove(tmpFile) } catch {}

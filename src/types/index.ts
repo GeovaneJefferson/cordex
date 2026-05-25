@@ -67,7 +67,7 @@ export interface AppState {
   analysisResult: string;
   bugFixModal: BugFixModalState;
   sidebarVisible: boolean;
-  sidebarPanel: 'explorer' | 'search' | 'git';
+  sidebarPanel: 'explorer' | 'search' | 'git' | 'extensions';
   cursorLine: number;
   cursorCol: number;
   aiSettings: AISettings;
@@ -83,7 +83,7 @@ export interface AppState {
 
 export type AppAction =
   | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'SET_SIDEBAR_PANEL'; panel: 'explorer' | 'search' | 'git' }
+  | { type: 'SET_SIDEBAR_PANEL'; panel: 'explorer' | 'search' | 'git' | 'extensions' }
   | { type: 'SET_PROJECT'; root: string; tree: FileNode[] }
   | { type: 'SET_FILE_TREE'; tree: FileNode[] }
   | { type: 'ADD_TAB'; tab: Tab }
@@ -114,6 +114,7 @@ export type AppAction =
   | { type: 'NEW_FILE' }
   | { type: 'OPEN_FILE'; payload: { path: string; content: string; language: string } }
   | { type: 'UPDATE_TAB_PATH'; id: string; path: string; name?: string }
-  | { type: 'TOGGLE_CHAT_PANEL' } 
+  | { type: 'UPDATE_TAB_LANGUAGE'; id: string; language: string }
+  | { type: 'TOGGLE_CHAT_PANEL' }
   | { type: 'TOGGLE_HISTORY_PANEL' }
 ;

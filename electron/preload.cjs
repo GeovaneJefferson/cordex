@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld('Cordex', {
     abort:     (k) => ipcRenderer.send('ai:abort', k),
     ping:      ()  => ipcRenderer.invoke('ai:ping'),
     docstring: (p) => ipcRenderer.invoke('ai:docstring', p),
-    fixError:  (p) => ipcRenderer.invoke('ai:fix-error', p),
+    fixError:    (p) => ipcRenderer.invoke('ai:fix-error', p),
+    bugFixCode:  (p) => ipcRenderer.invoke('ai:bug-fix-code', p),
     onChunk: (cb) => { ipcRenderer.on('ai:analyze:chunk', (_e, c) => cb(c)) },
     documentProject: (root, model) => ipcRenderer.invoke('ai:document-project', { projectRoot: root, model }),
     chatStream: (payload, callbacks) => {
@@ -170,14 +171,13 @@ contextBridge.exposeInMainWorld('Cordex', {
 
 contextBridge.exposeInMainWorld('electronAPI', {
   saveFlow:       (fh, fd) => ipcRenderer.invoke('save-flow',    fh, fd),
-  loadFlow:       (fh)     => ipcRenderer.invoke('load-flow',    fh),
-  analyzeFlow:    (code)   => ipcRenderer.invoke('analyze-flow', code),
-  // ── Execution / simulation engine ────────────────────────────────
-  runFlow:        (p) => ipcRenderer.invoke('flow:run',         p),
+  loadFlow:       (fh)    => ipcRenderer.invoke('load-flow',    fh),
+  analyzeFlow:    (code)  => ipcRenderer.invoke('analyze-flow', code),
+  runFlow:        (p)     => ipcRenderer.invoke('flow:run',         p),
   simulateFlow:   (p) => ipcRenderer.invoke('flow:simulate',    p),
   detectFlowMode: (p) => ipcRenderer.invoke('flow:detect-mode', p),
-  deleteFlow:   (fh)     => ipcRenderer.invoke('delete-flow', fh),
-  ollamaStatus: ()       => ipcRenderer.invoke('ollama-status'),
-  systemMemory: ()       => ipcRenderer.invoke('system-memory'),
-  execCommand:  (c, d)   => ipcRenderer.invoke('exec-command', c, d),
+  deleteFlow:     (fh)     => ipcRenderer.invoke('delete-flow', fh),
+  ollamaStatus:   ()       => ipcRenderer.invoke('ollama-status'),
+  systemMemory:   ()       => ipcRenderer.invoke('system-memory'),
+  execCommand:    (c, d)   => ipcRenderer.invoke('exec-command', c, d),
 })

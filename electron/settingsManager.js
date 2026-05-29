@@ -10,10 +10,9 @@ const DEFAULT_SETTINGS = {
   autocompleteModel: 'qwen2.5-coder:1.5b-base',
   analysisModel: 'qwen2.5-coder:3b',
   embedModel: 'nomic-embed-text',
-  flowModel: 'cordex-flow',
+  flowModel: 'qwen2.5-coder:3b',
   theme: 'white',                
   showLineNumbers: true,        
-  // add more as needed
 };
 
 function loadSettings() {

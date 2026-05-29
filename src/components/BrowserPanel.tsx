@@ -265,14 +265,24 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     window.open(currentUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const openInRightPanel = () => {
+    // Ensure the browser panel is visible
+    if (!visible) {
+      (window as any).__cordexToggleBrowser?.();
+    }
+  };
+
   const switchMode = (m: 'phone' | 'desktop') => {
     onModeChange(m);
     setLandscape(false);
   };
 
   // ── Dragging logic for desktop width ───────────────────────────────────
+  const dragStartWidthRef = useRef(0);
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    dragStartWidthRef.current = desktopWidth || 800;
     setIsDraggingWidth(true);
   };
 
@@ -281,11 +291,11 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
       if (!isDraggingWidth) return;
       const containerRect = containerRef.current?.getBoundingClientRect();
       if (!containerRect) return;
-      // New width = mouse X relative to container's left edge
-      let newWidth = e.clientX - containerRect.left;
-      const maxWidth = containerRect.width;
-      newWidth = Math.min(maxWidth, Math.max(320, newWidth));
-      setDesktopWidth(newWidth);
+      // Desktop preview box right edge resize: dragStartWidthRef - (clientX delta to left)
+      // If user drags right, clientX increases, so width decreases (correct for right-edge resize)
+      const dragDelta = e.clientX - (containerRect.left + containerRect.width);
+      const newWidth = Math.max(320, dragStartWidthRef.current - dragDelta);
+      setDesktopWidth(Math.min(containerRect.width - 50, newWidth));
     };
     const onMouseUp = () => setIsDraggingWidth(false);
     if (isDraggingWidth) {
@@ -530,6 +540,15 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>open_in_new</span>
         </button>
 
+        <button onClick={openInRightPanel} title="Focus right panel"
+          style={{
+            padding: 4, borderRadius: 7, border: '1px solid #e2e8f0',
+            background: 'white', cursor: 'pointer', display: 'flex',
+            alignItems: 'center', color: '#64748b', flexShrink: 0,
+          }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>picture_in_picture_alt</span>
+        </button>
+
         <button onClick={onClose} title="Close preview"
           style={{ padding: 4, borderRadius: 7, border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', flexShrink: 0, display: 'flex' }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
@@ -538,11 +557,12 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
 
       {/* Preview area */}
       <div ref={containerRef} style={{
-        flex: 1, overflow: 'hidden',
+        flex: 1, overflow: mode === 'phone' ? 'hidden' : 'visible',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         padding: mode === 'phone' ? '16px 0' : 0,
         background: mode === 'phone' ? '#e2e8f0' : 'white',
         position: 'relative',
+        clipPath: mode === 'phone' ? undefined : 'none',
       }}>
         {hasError ? (
           renderErrorFallback()
@@ -565,7 +585,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                 position: 'relative',
                 width: desktopWidth ? Math.min(desktopWidth, containerSize.w) : '100%',
                 height: '100%',
-                transition: isDraggingWidth ? 'none' : 'width 0.1s ease',
+                flexShrink: 0,
               }}>
                 <iframe
                   key={iframeKey}
@@ -576,26 +596,23 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                   onError={() => { setLoading(false); setHasError(true); }}
                   title="Preview"
                 />
-                {/* Draggable resize handle (only in desktop mode, when not full width) */}
-                {desktopWidth > 0 && (
-                  <div
-                    onMouseDown={onMouseDown}
-                    style={{
-                      position: 'absolute',
-                      right: -6,
-                      top: 0,
-                      bottom: 0,
-                      width: 12,
-                      cursor: 'ew-resize',
-                      zIndex: 20,
-                      background: 'rgba(0,0,0,0.05)',
-                      borderRadius: 4,
-                      transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.15)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.05)'}
-                  />
-                )}
+                {/* Draggable resize handle */}
+                <div
+                  onMouseDown={onMouseDown}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 8,
+                    cursor: 'ew-resize',
+                    zIndex: 20,
+                    background: isDraggingWidth ? 'rgba(249,115,22,0.6)' : 'transparent',
+                    transition: isDraggingWidth ? 'none' : 'background 0.2s',
+                  }}
+                  onMouseEnter={e => { if (!isDraggingWidth) e.currentTarget.style.background = 'rgba(249,115,22,0.3)'; }}
+                  onMouseLeave={e => { if (!isDraggingWidth) e.currentTarget.style.background = 'transparent'; }}
+                />
               </div>
             )}
           </>

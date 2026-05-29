@@ -23,7 +23,7 @@ function hashStr(s: string) { let h = 0; for (let i = 0; i < Math.min(s.length, 
 const NCFG: Record<string, { bg: string; border: string; icon: string; tag: string; tagColor: string; tagBg: string }> = {
   entry:    { bg:'#f0fdf4', border:'#16a34a', icon:'play_arrow',    tag:'ENTRY',  tagColor:'#15803d', tagBg:'#dcfce7' },
   exit:     { bg:'#fef2f2', border:'#dc2626', icon:'stop',          tag:'EXIT',   tagColor:'#b91c1c', tagBg:'#fee2e2' },
-  call:     { bg:'#ffffff', border:'#e2e8f0', icon:'code',          tag:'DO',     tagColor:'#0284c7', tagBg:'#e0f2fe' },
+  call:     { bg:'var(--bg-elevated)', border:'var(--border-default)', icon:'code',          tag:'DO',     tagColor:'#0284c7', tagBg:'#e0f2fe' },
   decision: { bg:'#fffbeb', border:'#f59e0b', icon:'device_hub',    tag:'IF',     tagColor:'#b45309', tagBg:'#fef3c7' },
   loop:     { bg:'#f5f3ff', border:'#7c3aed', icon:'autorenew',     tag:'LOOP',   tagColor:'#6d28d9', tagBg:'#ede9fe' },
   error:    { bg:'#fff1f2', border:'#e11d48', icon:'error_outline', tag:'ERROR',  tagColor:'#be123c', tagBg:'#ffe4e6' },
@@ -39,7 +39,7 @@ const STATUS_STYLE: Record<NodeStatus, { border: string; bg: string; glow?: stri
   error:     { border:'#dc2626', bg:'#fff1f2', glow:'rgba(220,38,38,0.2)'   },
   predicted: { border:'#0ea5e9', bg:'#f0f9ff', glow:'rgba(14,165,233,0.15)' },
   risk:      { border:'#f59e0b', bg:'#fffbeb', glow:'rgba(245,158,11,0.2)'  },
-  skipped:   { border:'#cbd5e1', bg:'#f8fafc'  },
+  skipped:   { border:'var(--border-strong)', bg:'var(--bg-elevated)' },
 };
 
 function orthogonalPath(sx: number, sy: number, tx: number, ty: number) {
@@ -67,7 +67,7 @@ const NodeCard: React.FC<{
     : st.glow ? `0 0 0 2px ${st.glow},0 2px 10px rgba(0,0,0,0.07)` : '0 2px 8px rgba(0,0,0,0.07)';
 
   const iconName = status==='running'?'autorenew':status==='success'?'check_circle':status==='error'?'error':status==='risk'?'warning':status==='predicted'?'trending_flat':status==='skipped'?'remove_circle':c.icon;
-  const iconBg   = status==='running'?'#f97316':status==='success'?'#16a34a':status==='error'?'#dc2626':status==='risk'?'#f59e0b':status==='predicted'?'#0ea5e9':status==='skipped'?'#94a3b8':border;
+  const iconBg   = status==='running'?'#f97316':status==='success'?'#16a34a':status==='error'?'#dc2626':status==='risk'?'#f59e0b':status==='predicted'?'#0ea5e9':status==='skipped'?'var(--text-muted)':border;
 
   return (
     <div data-node-id={node.id}
@@ -83,22 +83,22 @@ const NodeCard: React.FC<{
             animation:status==='running'?'spin 1s linear infinite':'none' }}>{iconName}</span>
         </div>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:'#0f172a', lineHeight:1.3, wordBreak:'break-word' }}>{label}</div>
-          {node.line && <div style={{ fontSize:9, color:'#94a3b8', fontFamily:'monospace' }}>line {node.line}</div>}
+          <div style={{ fontSize:13, fontWeight:700, color:'var(--text-primary)', lineHeight:1.3, wordBreak:'break-word' }}>{label}</div>
+          {node.line && <div style={{ fontSize:9, color:'var(--text-muted)', fontFamily:'monospace' }}>line {node.line}</div>}
         </div>
       </div>
       <div style={{ paddingLeft:14, paddingBottom:6, display:'flex', gap:6, flexWrap:'wrap' }}>
         <span style={{ fontSize:9, fontWeight:700, letterSpacing:'.6px', background:c.tagBg, color:c.tagColor, padding:'2px 6px', borderRadius:4 }}>{c.tag}</span>
         {status !== 'idle' && (
           <span style={{ fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4,
-            background:st.glow?st.bg:'#f1f5f9', color:border, border:`1px solid ${border}` }}>
+            background:st.glow?st.bg:'var(--bg-muted)', color:border, border:`1px solid ${border}` }}>
             {status.toUpperCase()}
           </span>
         )}
       </div>
       {(desc || errMsg) && (
         <div style={{ margin:'0 14px 10px', borderTop:`1px dashed ${border}`, paddingTop:7 }}>
-          {desc && <div style={{ fontFamily:'monospace', fontSize:11, color:status==='success'?'#15803d':status==='error'?'#dc2626':'#64748b', lineHeight:1.4 }}>{desc}</div>}
+          {desc && <div style={{ fontFamily:'monospace', fontSize:11, color:status==='success'?'#15803d':status==='error'?'#dc2626':'var(--text-tertiary)', lineHeight:1.4 }}>{desc}</div>}
           {errMsg && <div style={{ fontFamily:'monospace', fontSize:11, color:'#dc2626', background:'#fef2f2', borderRadius:4, padding:'3px 6px', marginTop:4 }}>{errMsg}</div>}
         </div>
       )}
@@ -131,32 +131,32 @@ const RightPanel: React.FC<{
   useEffect(() => { if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight; }, [logs]);
 
   return (
-    <div style={{ width:300, borderLeft:'1px solid #e2e8f0', background:'#fff', display:'flex', flexDirection:'column', flexShrink:0 }}>
+    <div style={{ width:300, borderLeft:'1px solid var(--border-default)', background:'var(--bg-app)', display:'flex', flexDirection:'column', flexShrink:0 }}>
       {mode && (
-        <div style={{ padding:'8px 12px', borderBottom:'1px solid #e2e8f0',
-          background:mode==='execution'?'#f0fdf4':'#eff6ff', display:'flex', alignItems:'center', gap:8 }}>
+        <div style={{ padding:'8px 12px', borderBottom:'1px solid var(--border-default)',
+          background:mode==='execution'?'rgba(22,163,74,0.08)':'rgba(59,130,246,0.08)', display:'flex', alignItems:'center', gap:8 }}>
           <span className="material-symbols-outlined" style={{ fontSize:15, color:mode==='execution'?'#16a34a':'#3b82f6' }}>
             {mode==='execution'?'bolt':'analytics'}
           </span>
           <div>
-            <div style={{ fontSize:11, fontWeight:700, color:mode==='execution'?'#15803d':'#1d4ed8' }}>
+            <div style={{ fontSize:11, fontWeight:700, color:mode==='execution'?'#16a34a':'#3b82f6' }}>
               {mode==='execution'?'⚡ EXECUTION MODE':'🔵 SIMULATION MODE'}
             </div>
-            <div style={{ fontSize:10, color:'#64748b' }}>{mode==='execution'?'Real subprocess':'Static analysis'}</div>
+            <div style={{ fontSize:10, color:'var(--text-tertiary)' }}>{mode==='execution'?'Real subprocess':'Static analysis'}</div>
           </div>
         </div>
       )}
       {stats && (
-        <div style={{ padding:'8px 12px', borderBottom:'1px solid #e2e8f0', display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+        <div style={{ padding:'8px 12px', borderBottom:'1px solid var(--border-default)', display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
           {[['Executed','#16a34a',stats.executed],['Errors','#dc2626',stats.errors],['Risks','#f59e0b',stats.risks],['Predicted','#0ea5e9',stats.predicted]].map(([l,c,v]) => (
-            <div key={l as string} style={{ background:'#f8fafc', borderRadius:6, padding:'4px 8px', borderLeft:`3px solid ${c}` }}>
+            <div key={l as string} style={{ background:'var(--bg-elevated)', borderRadius:6, padding:'4px 8px', borderLeft:`3px solid ${c}` }}>
               <div style={{ fontSize:16, fontWeight:800, color:c as string, lineHeight:1 }}>{v as number}</div>
-              <div style={{ fontSize:9, color:'#94a3b8', fontWeight:600 }}>{(l as string).toUpperCase()}</div>
+              <div style={{ fontSize:9, color:'var(--text-muted)', fontWeight:600 }}>{(l as string).toUpperCase()}</div>
             </div>
           ))}
         </div>
       )}
-      <div style={{ padding:'10px 12px', borderBottom:'1px solid #e2e8f0', display:'flex', flexDirection:'column', gap:6 }}>
+      <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--border-default)', display:'flex', flexDirection:'column', gap:6 }}>
         {running
           ? <button onClick={onStop} style={{ width:'100%', padding:'7px 0', background:'#dc2626', color:'white', border:'none', borderRadius:7, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
               <span className="material-symbols-outlined" style={{ fontSize:16 }}>stop</span>Stop
@@ -164,22 +164,22 @@ const RightPanel: React.FC<{
           : <button onClick={onPlay} style={{ width:'100%', padding:'7px 0', background:'#16a34a', color:'white', border:'none', borderRadius:7, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
               <span className="material-symbols-outlined" style={{ fontSize:16 }}>play_arrow</span>{mode?'Run Again':'Run / Simulate'}
             </button>}
-        <button onClick={onReset} style={{ width:'100%', padding:'5px 0', background:'white', color:'#64748b', border:'1px solid #e2e8f0', borderRadius:7, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+        <button onClick={onReset} style={{ width:'100%', padding:'5px 0', background:'var(--bg-elevated)', color:'var(--text-tertiary)', border:'1px solid var(--border-default)', borderRadius:7, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
           <span className="material-symbols-outlined" style={{ fontSize:14 }}>refresh</span>Reset
         </button>
-        <button onClick={onRegenerate} style={{ width:'100%', padding:'5px 0', background:'white', color:'#94a3b8', border:'1px solid #e2e8f0', borderRadius:7, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+        <button onClick={onRegenerate} style={{ width:'100%', padding:'5px 0', background:'var(--bg-elevated)', color:'var(--text-muted)', border:'1px solid var(--border-default)', borderRadius:7, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
           <span className="material-symbols-outlined" style={{ fontSize:14 }}>account_tree</span>Regenerate flow
         </button>
       </div>
-      <div style={{ padding:'6px 12px 4px', fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px', color:'#94a3b8', borderBottom:'1px solid #f1f5f9' }}>
+      <div style={{ padding:'6px 12px 4px', fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px', color:'var(--text-muted)', borderBottom:'1px solid var(--border-subtle)' }}>
         Output
       </div>
       <div ref={logsRef} style={{ flex:1, overflowY:'auto', padding:'4px 6px', display:'flex', flexDirection:'column', gap:2 }}>
         {logs.map((l,i) => (
           <div key={i} style={{ fontSize:10.5, fontFamily:'monospace', lineHeight:1.4, padding:'2px 7px', borderRadius:4,
-            borderLeft:`3px solid ${l.kind==='success'?'#16a34a':l.kind==='error'?'#dc2626':l.kind==='warn'?'#f59e0b':l.kind==='ai'?'#7c3aed':'#94a3b8'}`,
-            background:l.kind==='success'?'#f0fdf4':l.kind==='error'?'#fef2f2':l.kind==='warn'?'#fffbeb':l.kind==='ai'?'#f5f3ff':'#f8fafc',
-            color:l.kind==='success'?'#15803d':l.kind==='error'?'#b91c1c':l.kind==='warn'?'#92400e':l.kind==='ai'?'#6d28d9':'#475569',
+            borderLeft:`3px solid ${l.kind==='success'?'#16a34a':l.kind==='error'?'#dc2626':l.kind==='warn'?'#f59e0b':l.kind==='ai'?'#7c3aed':'var(--border-strong)'}`,
+            background:l.kind==='success'?'rgba(22,163,74,0.08)':l.kind==='error'?'rgba(220,38,38,0.08)':l.kind==='warn'?'rgba(245,158,11,0.08)':l.kind==='ai'?'rgba(124,58,237,0.08)':'var(--bg-elevated)',
+            color:l.kind==='success'?'#16a34a':l.kind==='error'?'#ef4444':l.kind==='warn'?'#f59e0b':l.kind==='ai'?'#8b5cf6':'var(--text-secondary)',
             whiteSpace:'pre-wrap', wordBreak:'break-all' }}>
             {l.text}
           </div>
@@ -210,9 +210,20 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
   const [riskMap,    setRiskMap]    = useState<Record<string,string[]>>({});
   const [stats,      setStats]      = useState<{executed:number;errors:number;risks:number;predicted:number;total:number}|null>(null);
 
-  // Z-zoom state
+  // Z-zoom state — with debouncing for precision
   const [zoomMode,   setZoomMode]   = useState(false);
   const [zoomRect,   setZoomRect]   = useState<{x:number;y:number;w:number;h:number}|null>(null);
+
+  // Calculate content size based on actual node positions
+  const contentSize = React.useMemo(() => {
+    if (!nodes.length) return { width: 3000, height: 2000 };
+    let maxX = 0, maxY = 0;
+    nodes.forEach(n => {
+      maxX = Math.max(maxX, n.position.x + NODE_W + 100);
+      maxY = Math.max(maxY, n.position.y + (n.height ?? 100) + 100);
+    });
+    return { width: Math.max(3000, maxX), height: Math.max(2000, maxY) };
+  }, [nodes]);
 
   const zoomApiRef = useRef<any>(null);
   const canvasRef  = useRef<HTMLDivElement>(null);
@@ -258,6 +269,20 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
     if (cached) { setGraph(cached.graph); setNodes(cached.nodes); resetStatuses(cached.nodes); return; }
     analyze();
   }, [cacheKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-zoom to first error node when graph loads
+  useEffect(() => {
+    if (!nodes.length || !zoomApiRef.current || !canvasRef.current) return;
+    const errNode = nodes.find(n => n.nodeType === 'error');
+    if (!errNode) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const targetScale = 1.1;
+    const nodeW = NODE_W;
+    const nodeH = errNode.height ?? 110;
+    const newPosX = rect.width  / 2 - (errNode.position.x + nodeW / 2) * targetScale;
+    const newPosY = rect.height / 2 - (errNode.position.y + nodeH / 2) * targetScale;
+    setTimeout(() => zoomApiRef.current?.setTransform(newPosX, newPosY, targetScale, 450, 'easeOut'), 200);
+  }, [nodes]);
 
   const nodeForLine = useCallback((line: number): string|null => {
     if (!nodes.length) return null;
@@ -365,7 +390,7 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
       const tx=tgt.position.x+NODE_W/2, ty=tgt.position.y-4;
       const isErr = edge.kind==='error' || ['raises','error','catch'].includes(edge.label??'');
       const isBr  = edge.kind==='branch'|| ['false','no','else'].includes(edge.label??'');
-      const stroke= isErr?'#ef4444':isBr?'#f59e0b':'#94a3b8';
+      const stroke= isErr?'#ef4444':isBr?'#f59e0b':'var(--text-muted)';
       return (
         <g key={edge.id}>
           <path d={orthogonalPath(sx,sy,tx,ty)} fill="none" stroke={stroke}
@@ -385,11 +410,9 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
   // ── Z-box-zoom handlers (using the library's setTransform) ────────────────
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'z' || e.key === 'Z') {
-        if (!(e.ctrlKey || e.metaKey)) {
-          setZoomMode(true);
-          e.preventDefault();
-        }
+      if ((e.key === 'z' || e.key === 'Z') && !e.ctrlKey && !e.metaKey) {
+        if (!e.repeat) setZoomMode(true);
+        e.preventDefault();
       }
       if (e.key === 'Escape') {
         setZoomMode(false);
@@ -410,10 +433,9 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
     };
   }, []);
 
-  // Mouse handlers for box-zoom (only active when zoomMode is true)
+  // Mouse handler for box-zoom — uses window listeners so TransformWrapper can't steal events
   const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!zoomMode) return;
-    if (e.button !== 0) return;
+    if (!zoomMode || e.button !== 0) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const x = e.clientX - rect.left;
@@ -422,58 +444,54 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
     setZoomRect({ x, y, w: 0, h: 0 });
     e.preventDefault();
     e.stopPropagation();
-  }, [zoomMode]);
 
-  const onCanvasMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!zoomMode || !zoomStartRef.current) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const sx = zoomStartRef.current.x;
-    const sy = zoomStartRef.current.y;
-    setZoomRect({ x: Math.min(sx, cx), y: Math.min(sy, cy), w: Math.abs(cx - sx), h: Math.abs(cy - sy) });
-  }, [zoomMode]);
+    const onMove = (mv: MouseEvent) => {
+      if (!zoomStartRef.current || !canvasRef.current) return;
+      const r = canvasRef.current.getBoundingClientRect();
+      const cx = mv.clientX - r.left, cy = mv.clientY - r.top;
+      const { x: sx, y: sy } = zoomStartRef.current;
+      setZoomRect({ x: Math.min(sx, cx), y: Math.min(sy, cy), w: Math.abs(cx - sx), h: Math.abs(cy - sy) });
+    };
 
-  const onCanvasMouseUp = useCallback((e: React.MouseEvent) => {
-    if (!zoomMode || !zoomStartRef.current) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const sx = zoomStartRef.current.x;
-    const sy = zoomStartRef.current.y;
-    const rw = Math.abs(cx - sx);
-    const rh = Math.abs(cy - sy);
-    if (rw > 10 && rh > 10) {
-      const rx = Math.min(sx, cx);
-      const ry = Math.min(sy, cy);
-      // Get current transform from the library
-      const api = zoomApiRef.current;
-      if (api) {
-        const curState = api.state;
-        const curScale = curState.scale;
-        const curPosX = curState.positionX;
-        const curPosY = curState.positionY;
-        // Calculate world coordinates under the top-left of the rectangle
-        const worldX = (rx - curPosX) / curScale;
-        const worldY = (ry - curPosY) / curScale;
-        // Calculate new scale to fit the rectangle
-        const newScale = Math.min(2, Math.max(0.2, Math.min(rect.width / rw, rect.height / rh) * 0.9));
-        // New position to center that world point
-        const newPosX = rx - worldX * newScale;
-        const newPosY = ry - worldY * newScale;
-        api.setTransform(newPosX, newPosY, newScale, 200, 'easeOut');
+    const onUp = (up: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      if (!canvasRef.current || !zoomStartRef.current) { setZoomMode(false); return; }
+      const r = canvasRef.current.getBoundingClientRect();
+      const cx = up.clientX - r.left, cy = up.clientY - r.top;
+      const { x: sx, y: sy } = zoomStartRef.current;
+      const rw = Math.abs(cx - sx), rh = Math.abs(cy - sy);
+      if (rw > 10 && rh > 10) {
+        const rx = Math.min(sx, cx), ry = Math.min(sy, cy);
+        const api = zoomApiRef.current;
+        if (api) {
+          const { scale: curScale, positionX: curPosX, positionY: curPosY } = api.state;
+          // Calculate new scale to fit the selected rectangle
+          const newScale = Math.min(2, Math.max(0.2, Math.min(r.width / rw, r.height / rh) * 0.95));
+          // Calculate the center of the selection rectangle in screen coordinates
+          const screenCenterX = rx + rw / 2;
+          const screenCenterY = ry + rh / 2;
+          // Calculate the center in world coordinates
+          const worldCenterX = (screenCenterX - curPosX) / curScale;
+          const worldCenterY = (screenCenterY - curPosY) / curScale;
+          // Calculate new position to center the selection
+          const newPosX = (r.width / 2) - (worldCenterX * newScale);
+          const newPosY = (r.height / 2) - (worldCenterY * newScale);
+          api.setTransform(newPosX, newPosY, newScale, 300, 'easeOut');
+        }
       }
-    }
-    zoomStartRef.current = null;
-    setZoomRect(null);
-    setZoomMode(false);
+      zoomStartRef.current = null;
+      setZoomRect(null);
+      setZoomMode(false);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   }, [zoomMode]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ flex:1, display:'flex', overflow:'hidden', background:'#f8fafc' }}>
+    <div style={{ flex:1, display:'flex', overflow:'hidden', background:'var(--bg-elevated)' }}>
       {/* ── Canvas ────────────────────────────────────────────────────────── */}
       <div
         ref={canvasRef}
@@ -484,8 +502,6 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
           userSelect: 'none',
         }}
         onMouseDown={onCanvasMouseDown}
-        onMouseMove={onCanvasMouseMove}
-        onMouseUp={onCanvasMouseUp}
         onContextMenu={e => e.preventDefault()}
       >
         <TransformWrapper
@@ -495,7 +511,7 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
           minScale={0.2}
           maxScale={2}
           wheel={{ step: 0.1 }}
-          panning={{ disabled: zoomMode }}   // disable panning while in box-zoom mode
+          panning={{ disabled: zoomMode, velocityDisabled: true }}
           doubleClick={{ disabled: true }}
           onInit={ref => (zoomApiRef.current = ref)}
         >
@@ -504,36 +520,28 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
               {/* Toolbar */}
               {graph && (
                 <div style={{ position:'absolute', top:10, left:10, right:10, zIndex:20, display:'flex', alignItems:'center', gap:8, pointerEvents:'none' }}>
-                  <div style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:8, padding:'5px 10px', fontSize:11, fontWeight:600, color:'#64748b', display:'flex', alignItems:'center', gap:6, pointerEvents:'auto' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize:14, color:'#f97316' }}>account_tree</span>
-                    {sourceTab?.name ?? 'Flow'} — {nodes.length} nodes
+                  <div style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:8, padding:'5px 10px', fontSize:11, fontWeight:600, color:'var(--text-tertiary)', display:'flex', alignItems:'center', gap:6, pointerEvents:'auto' }}>
+                    {zoomMode && (
+                      <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize:15 }}>info</span>
+                        🔍 Z-ZOOM — drag a rectangle
+                      </div>
+                    )}
                   </div>
-                  {playMode && (
-                    <div style={{ padding:'4px 10px', borderRadius:20, fontSize:10, fontWeight:700,
-                      background:playMode==='execution'?'#dcfce7':'#dbeafe', color:playMode==='execution'?'#15803d':'#1d4ed8',
-                      border:`1px solid ${playMode==='execution'?'#86efac':'#93c5fd'}` }}>
-                      {playMode==='execution'?'⚡ EXECUTION':'🔵 SIMULATION'}
-                    </div>
-                  )}
-                  {zoomMode && (
-                    <div style={{ padding:'4px 10px', borderRadius:20, fontSize:10, fontWeight:700, background:'#fef3c7', color:'#b45309', border:'1px solid #fcd34d' }}>
-                      🔍 Z-ZOOM — drag a rectangle
-                    </div>
-                  )}
                   <div style={{ flex:1 }} />
                   {/* Zoom controls */}
-                  <button key="zo" style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:6, padding:'4px 7px', cursor:'pointer', fontSize:11, color:'#64748b', display:'flex', alignItems:'center', pointerEvents:'auto' }}
+                  <button key="zo" style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:6, padding:'4px 7px', cursor:'pointer', fontSize:11, color:'var(--text-tertiary)', display:'flex', alignItems:'center', pointerEvents:'auto' }}
                     onClick={() => zoomOut()}>
                     <span className="material-symbols-outlined" style={{ fontSize:15 }}>zoom_out</span>
                   </button>
-                  <span key="pct" style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:600, color:'#64748b', pointerEvents:'auto' }}>
+                  <span key="pct" style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:600, color:'var(--text-tertiary)', pointerEvents:'auto' }}>
                     {Math.round(scale * 100)}%
                   </span>
-                  <button key="zi" style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:6, padding:'4px 7px', cursor:'pointer', fontSize:11, color:'#64748b', display:'flex', alignItems:'center', pointerEvents:'auto' }}
+                  <button key="zi" style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:6, padding:'4px 7px', cursor:'pointer', fontSize:11, color:'var(--text-tertiary)', display:'flex', alignItems:'center', pointerEvents:'auto' }}
                     onClick={() => zoomIn()}>
                     <span className="material-symbols-outlined" style={{ fontSize:15 }}>zoom_in</span>
                   </button>
-                  <button key="fit" style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:6, padding:'4px 7px', cursor:'pointer', fontSize:11, color:'#64748b', display:'flex', alignItems:'center', pointerEvents:'auto' }}
+                  <button key="fit" style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:6, padding:'4px 7px', cursor:'pointer', fontSize:11, color:'var(--text-tertiary)', display:'flex', alignItems:'center', pointerEvents:'auto' }}
                     onClick={() => resetTransform()}>
                     <span className="material-symbols-outlined" style={{ fontSize:15 }}>fit_screen</span>
                   </button>
@@ -543,7 +551,7 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
               {/* Pan/zoom content */}
               <TransformComponent
                 wrapperStyle={{ width: '100%', height: '100%' }}
-                contentStyle={{ width: '3000px', height: '2000px' }}
+                contentStyle={{ width: contentSize.width + 'px', height: contentSize.height + 'px' }}
               >
                 {graph && (
                   <>
@@ -576,23 +584,23 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
         {analyzing && (
           <div style={{ position:'absolute', inset:0, background:'rgba(248,250,252,0.92)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, zIndex:30 }}>
             <div style={{ position:'relative', width:56, height:56 }}>
-              <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'4px solid #f1f5f9' }} />
+              <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'4px solid var(--border-default)' }} />
               <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'4px solid #f97316', borderTopColor:'transparent', animation:'spin 1s linear infinite' }} />
               <span className="material-symbols-outlined" style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, color:'#f97316' }}>account_tree</span>
             </div>
-            <p style={{ fontSize:13, fontWeight:600, color:'#64748b' }}>Building flow graph…</p>
+            <p style={{ fontSize:13, fontWeight:600, color:'var(--text-tertiary)' }}>Building flow graph…</p>
           </div>
         )}
 
         {/* Empty state overlay */}
         {!analyzing && !graph && (
           <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, zIndex:30 }}>
-            <span className="material-symbols-outlined" style={{ fontSize:52, color:'#e2e8f0' }}>account_tree</span>
-            <p style={{ fontSize:13, fontWeight:600, color:'#94a3b8' }}>
+            <span className="material-symbols-outlined" style={{ fontSize:52, color:'var(--border-default)' }}>account_tree</span>
+            <p style={{ fontSize:13, fontWeight:600, color:'var(--text-muted)' }}>
               {sourceTab ? `Generating flow for ${sourceTab.name}…` : 'No source file open'}
             </p>
             {sourceTab && (
-              <button onClick={analyze} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 18px', borderRadius:20, background:'#0f172a', color:'white', border:'none', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+              <button onClick={analyze} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 18px', borderRadius:20, background:'var(--text-primary)', color:'var(--bg-app)', border:'none', fontSize:12, fontWeight:600, cursor:'pointer' }}>
                 <span className="material-symbols-outlined" style={{ fontSize:15 }}>account_tree</span>Generate Flow
               </button>
             )}
@@ -606,7 +614,7 @@ export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
             borderRadius:3, boxShadow:'0 0 0 1px rgba(249,115,22,0.3)' }} />
         )}
 
-        <div style={{ position:'absolute', bottom:10, left:12, fontSize:10, color:'#94a3b8', pointerEvents:'none' }}>
+        <div style={{ position:'absolute', bottom:10, left:12, fontSize:10, color:'var(--text-muted)', pointerEvents:'none' }}>
           Drag to pan · Scroll to zoom · Hold Z + drag to box-zoom
         </div>
       </div>

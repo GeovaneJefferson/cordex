@@ -41,7 +41,16 @@ export const SearchPanel: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Focus the search input on mount AND whenever Ctrl+Shift+F is pressed
   useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    const handler = () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    window.addEventListener('cordex:focus-search', handler);
+    return () => window.removeEventListener('cordex:focus-search', handler);
+  }, []);
 
   // ── debounced search ──────────────────────────────────────────────────────
   const runSearch = useCallback(async (q: string) => {
@@ -101,12 +110,16 @@ export const SearchPanel: React.FC = () => {
   };
 
   // ── open file and jump to line ────────────────────────────────────────────
-  const openFile = async (filePath: string) => {
-    const tab = state.tabs.find((t: Tab) => t.path === filePath);   // typed
+  const openFile = async (filePath: string, line?: number) => {
+    const tab = state.tabs.find((t: Tab) => t.path === filePath);
     if (tab) {
       dispatch({ type: 'SET_ACTIVE_TAB', id: tab.id });
     } else {
       await readFile(filePath);
+    }
+    if (line) {
+      // Small delay so the editor has time to mount before we scroll
+      setTimeout(() => dispatch({ type: 'GOTO_LINE', line }), 80);
     }
   };
 
@@ -285,7 +298,7 @@ export const SearchPanel: React.FC = () => {
                 {fr.matches.map((m, i) => (
                   <div
                     key={i}
-                    onClick={() => openFile(fr.path)}
+                    onClick={() => openFile(fr.path, m.line)}
                     className="flex items-center pl-7 pr-3 py-[5px] hover:bg-orange-50 cursor-pointer transition-colors duration-100"
                   >
                     <span className="text-[10px] text-gray-300 w-7 text-right mr-2 flex-shrink-0 font-mono">{m.line}</span>

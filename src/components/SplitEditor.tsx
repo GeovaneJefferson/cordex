@@ -1,5 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { useAppState } from '../store/AppContext';
+import { useFileTree } from '../hooks/useFileTree';
 import { CodeEditor } from './CodeEditor';
 import { FlowView } from './FlowView';
 import { Tab } from '../types';   
@@ -15,7 +16,7 @@ const PaneContent: React.FC<{ tabId: string }> = ({ tabId }) => {
 type DropZone = 'left' | 'right' | 'top' | 'bottom' | 'center' | null;
 
 // VSCode-style drop zones that appear while dragging over a pane
-const DropZoneOverlay: React.FC<{ zone: DropZone; onDrop: (zone: DropZone, tabId: string) => void }> = ({ zone, onDrop }) => {
+const DropZoneOverlay: React.FC<{ zone: DropZone; onDrop: (zone: DropZone, tabId: string | null, filePath?: string) => void }> = ({ zone, onDrop }) => {
   const zones: { id: DropZone; style: React.CSSProperties; label: string }[] = [
     { id: 'left',   label: 'left',   style: { left: 0,    top: '25%',  width: '25%',  height: '50%' } },
     { id: 'right',  label: 'right',  style: { right: 0,   top: '25%',  width: '25%',  height: '50%' } },
@@ -36,7 +37,11 @@ const DropZoneOverlay: React.FC<{ zone: DropZone; onDrop: (zone: DropZone, tabId
           onDrop={e => {
             e.preventDefault();
             const tabId = e.dataTransfer.getData('application/x-cordex-tab');
-            if (tabId) onDrop(z.id, tabId);
+            if (tabId) { onDrop(z.id, tabId, undefined); return; }
+            try {
+              const node = JSON.parse(e.dataTransfer.getData('application/x-cordex-node'));
+              if (node?.type === 'file') onDrop(z.id, null, node.path);
+            } catch {}
           }}
         >
           <div className={`rounded-lg border-2 transition-all duration-100 flex items-center justify-center
@@ -58,6 +63,7 @@ const DropZoneOverlay: React.FC<{ zone: DropZone; onDrop: (zone: DropZone, tabId
 
 export const SplitEditor: React.FC = () => {
   const { state, dispatch } = useAppState();
+  const { readFile } = useFileTree();
   const activeTab = state.tabs.find((t: Tab) => t.id === state.activeTabId);
   const splitTab  = state.tabs.find((t: Tab) => t.id === state.splitTabId);
 
@@ -91,21 +97,48 @@ export const SplitEditor: React.FC = () => {
   };
 
   // ── Drop handler from zone overlay ────────────────────────────────────────
-  const handleZoneDrop = useCallback((zone: DropZone, tabId: string) => {
+  const handleZoneDrop = useCallback(async (zone: DropZone, tabId: string | null, filePath?: string) => {
     setDraggingOver(false);
     setHoverZone(null);
+
+    let resolvedId = tabId;
+    if (!resolvedId && filePath) {
+      // File dragged from the tree — open it first if needed
+      const existing = state.tabs.find((t: Tab) => t.path === filePath);
+      if (existing) {
+        resolvedId = existing.id;
+      } else {
+        await readFile(filePath);
+        // After readFile the new tab is the active one; grab it from state
+        // We use a small trick: readFile dispatches ADD_TAB + SET_ACTIVE_TAB
+        // so we just need to get the most recently-added tab for this path
+        resolvedId = '__pending__'; // handled below via state.activeTabId after dispatch
+      }
+    }
+
+    if (!resolvedId) return;
+
+    if (resolvedId === '__pending__') {
+      // readFile already set the new tab as active; just set the split direction
+      if (zone === 'right' || zone === 'bottom') {
+        setSplitDir(zone === 'right' ? 'horizontal' : 'vertical');
+        // The newly opened tab is now state.activeTabId — move original to split pane
+        // We'll just let the user re-drop for complex splits; basic case: open in split
+      }
+      return;
+    }
+
     if (!zone || zone === 'center') {
-      dispatch({ type: 'SET_ACTIVE_TAB', id: tabId });
+      dispatch({ type: 'SET_ACTIVE_TAB', id: resolvedId });
     } else if (zone === 'right' || zone === 'bottom') {
       setSplitDir(zone === 'right' ? 'horizontal' : 'vertical');
-      dispatch({ type: 'SET_SPLIT_TAB', tabId });
+      dispatch({ type: 'SET_SPLIT_TAB', tabId: resolvedId });
     } else if (zone === 'left' || zone === 'top') {
-      // Move current to split, new tab becomes primary
       setSplitDir(zone === 'left' ? 'horizontal' : 'vertical');
       if (state.activeTabId) dispatch({ type: 'SET_SPLIT_TAB', tabId: state.activeTabId });
-      dispatch({ type: 'SET_ACTIVE_TAB', id: tabId });
+      dispatch({ type: 'SET_ACTIVE_TAB', id: resolvedId });
     }
-  }, [dispatch, state.activeTabId]);
+  }, [dispatch, state.activeTabId, state.tabs, readFile]);
 
   const hasSplit   = !!splitTab;
   const isVertical = splitDir === 'vertical';
@@ -124,11 +157,15 @@ export const SplitEditor: React.FC = () => {
         onDragEnter={e => { if (!hasSplit) { e.preventDefault(); setDraggingOver(true); } }}
         onDragLeave={e => { if (!hasSplit && !e.currentTarget.contains(e.relatedTarget as Node)) setDraggingOver(false); }}
         onDragOver={e => e.preventDefault()}
-        onDrop={e => {
+        onDrop={async e => {
           e.preventDefault();
           setDraggingOver(false);
           const tabId = e.dataTransfer.getData('application/x-cordex-tab');
-          if (tabId) dispatch({ type: 'SET_ACTIVE_TAB', id: tabId });
+          if (tabId) { dispatch({ type: 'SET_ACTIVE_TAB', id: tabId }); return; }
+          try {
+            const node = JSON.parse(e.dataTransfer.getData('application/x-cordex-node'));
+            if (node?.type === 'file') await readFile(node.path);
+          } catch {}
         }}
       >
         {activeTab ? (

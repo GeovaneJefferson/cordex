@@ -5,40 +5,210 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ══════════════════════════════════════════════════════════════
+   CSS CUSTOM PROPERTIES — Light theme defaults (atom-one-light)
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  /* Surfaces */
+  --bg-app:        #ffffff;
+  --bg-elevated:   #F7F7F7;
+  --bg-subtle:     #F0F0F0;
+  --bg-muted:      #e5e7eb;   /* gray-200 */
+  --bg-strong:     #d1d5db;   /* gray-300 */
+
+  /* Text */
+  --text-primary:   #111827;  /* gray-900 */
+  --text-secondary: #374151;  /* gray-700 */
+  --text-tertiary:  #6b7280;  /* gray-500 */
+  --text-muted:     #9ca3af;  /* gray-400 */
+  --text-faint:     #d1d5db;  /* gray-300 */
+
+  /* Borders */
+  --border-subtle:  #f3f4f6;  /* gray-100 */
+  --border-default: #e5e7eb;  /* gray-200 */
+  --border-strong:  #d1d5db;  /* gray-300 */
+
+  /* Scrollbar */
+  --scrollbar-thumb: #e5e7eb;
+  --scrollbar-hover: #d1d5db;
+
+  /* Status bar */
+  --statusbar-bg:     #F0F0F0;
+  --statusbar-border: #DCDCDC;
+
+  /* Tab bar */
+  --tabbar-bg:        #FAFAFA;
+
+  /* Accent (orange — unchanged across themes) */
+  --accent: #f97316;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Atom One Dark
+   ══════════════════════════════════════════════════════════════ */
+:root[data-theme='atom-one-dark'] {
+  --bg-app:        #282C34;
+  --bg-elevated:   #2C313A;
+  --bg-subtle:     #2C313A;
+  --bg-muted:      #3E4451;
+  --bg-strong:     #4B5263;
+
+  --text-primary:   #D7DAE0;
+  --text-secondary: #ABB2BF;
+  --text-tertiary:  #636D83;
+  --text-muted:     #636D83;
+  --text-faint:     #4B5263;
+
+  --border-subtle:  #2C313A;
+  --border-default: #3E4451;
+  --border-strong:  #4B5263;
+
+  --scrollbar-thumb: #3E4451;
+  --scrollbar-hover: #4B5263;
+
+  --statusbar-bg:     #21252B;
+  --statusbar-border: #1d2026;
+
+  --tabbar-bg:        #21252B;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Solarized Dark
+   ══════════════════════════════════════════════════════════════ */
+:root[data-theme='solarized-dark'] {
+  --bg-app:        #002b36;
+  --bg-elevated:   #073642;
+  --bg-subtle:     #073642;
+  --bg-muted:      #094b57;
+  --bg-strong:     #0a5c6b;
+
+  --text-primary:   #eee8d5;
+  --text-secondary: #839496;
+  --text-tertiary:  #93a1a1;
+  --text-muted:     #657b83;
+  --text-faint:     #586e75;
+
+  --border-subtle:  #073642;
+  --border-default: #073642;
+  --border-strong:  #586e75;
+
+  --scrollbar-thumb: #094b57;
+  --scrollbar-hover: #0a5c6b;
+
+  --statusbar-bg:     #01202b;
+  --statusbar-border: #073642;
+
+  --tabbar-bg:        #01202b;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Base styles — use CSS variables
+   ══════════════════════════════════════════════════════════════ */
 body {
   font-family: 'Inter', sans-serif;
   margin: 0;
   padding: 0;
   height: 100vh;
   overflow: hidden;
-  background-color: #ffffff;
-  color: #333333;
+  background-color: var(--bg-app);
+  color: var(--text-secondary);
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .font-mono {
   font-family: 'JetBrains Mono', monospace;
 }
 
-.sidebar-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-.sidebar-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.sidebar-scroll::-webkit-scrollbar-thumb {
-  background-color: #e5e7eb;
-  border-radius: 10px;
+/* ══════════════════════════════════════════════════════════════
+   Tailwind override layer — maps hardcoded classes → CSS vars
+   Applied for both dark themes in one block via :is()
+   ══════════════════════════════════════════════════════════════ */
+:root[data-theme='atom-one-dark'],
+:root[data-theme='solarized-dark'] {
+
+  /* ── Surfaces ──────────────────────────────────────────────── */
+  .bg-white                    { background-color: var(--bg-app)      !important; }
+  .bg-\[#FAFAFA\],
+  .bg-\[#fafafa\]              { background-color: var(--bg-elevated)  !important; }
+  .bg-gray-50                  { background-color: var(--bg-elevated)  !important; }
+  .bg-gray-100                 { background-color: var(--bg-elevated)  !important; }
+  .bg-gray-200                 { background-color: var(--bg-muted)     !important; }
+  .bg-gray-300                 { background-color: var(--bg-strong)    !important; }
+  .bg-gray-800                 { background-color: var(--bg-muted)     !important; }
+  .bg-gray-900                 { background-color: var(--bg-app)       !important; }
+
+  /* Semantic light-only bg colours */
+  .bg-orange-50                { background-color: var(--bg-elevated)  !important; }
+  .bg-amber-50                 { background-color: var(--bg-elevated)  !important; }
+  .bg-blue-50                  { background-color: var(--bg-elevated)  !important; }
+  .bg-emerald-50               { background-color: var(--bg-elevated)  !important; }
+  .bg-red-50                   { background-color: var(--bg-elevated)  !important; }
+  .bg-green-50                 { background-color: var(--bg-elevated)  !important; }
+  .bg-yellow-200               { background-color: var(--bg-muted)     !important; }
+  .bg-\[#F0F0F0\]             { background-color: var(--bg-elevated)  !important; }
+  .bg-\[#F7F7F7\]             { background-color: var(--bg-elevated)  !important; }
+
+  /* ── Text ──────────────────────────────────────────────────── */
+  .text-black                  { color: var(--text-primary)   !important; }
+  .text-gray-900               { color: var(--text-primary)   !important; }
+  .text-gray-800               { color: var(--text-primary)   !important; }
+  .text-gray-700               { color: var(--text-secondary) !important; }
+  .text-gray-600               { color: var(--text-secondary) !important; }
+  .text-gray-500               { color: var(--text-tertiary)  !important; }
+  .text-gray-400               { color: var(--text-muted)     !important; }
+  .text-gray-300               { color: var(--text-faint)     !important; }
+
+  /* ── Borders ───────────────────────────────────────────────── */
+  .border-gray-50              { border-color: var(--border-subtle)  !important; }
+  .border-gray-100             { border-color: var(--border-subtle)  !important; }
+  .border-gray-200             { border-color: var(--border-default) !important; }
+  .border-gray-300             { border-color: var(--border-strong)  !important; }
+  .border-\[#DCDCDC\]         { border-color: var(--border-default) !important; }
+  .border-\[#e2e8f0\]         { border-color: var(--border-default) !important; }
+
+  /* Divide (hr-like separators) */
+  .divide-gray-100 > * + *    { border-color: var(--border-subtle)  !important; }
+  .divide-gray-200 > * + *    { border-color: var(--border-default) !important; }
+
+  /* ── Hover overrides ───────────────────────────────────────── */
+  .hover\:bg-white:hover       { background-color: var(--bg-elevated)  !important; }
+  .hover\:bg-gray-50:hover     { background-color: var(--bg-elevated)  !important; }
+  .hover\:bg-gray-100:hover    { background-color: var(--bg-elevated)  !important; }
+  .hover\:bg-gray-200:hover    { background-color: var(--bg-muted)     !important; }
+  .hover\:bg-red-50:hover      { background-color: var(--bg-elevated)  !important; }
+  .hover\:text-gray-700:hover  { color: var(--text-secondary)          !important; }
+  .hover\:text-gray-900:hover  { color: var(--text-primary)            !important; }
+
+  /* ── Focus overrides ───────────────────────────────────────── */
+  .focus\:bg-white:focus       { background-color: var(--bg-elevated)  !important; }
+
+  /* ── Status bar ────────────────────────────────────────────── */
+  .bg-\[#F0F0F0\]             { background-color: var(--statusbar-bg)     !important; }
+  .border-\[#DCDCDC\]         { border-color:     var(--statusbar-border) !important; }
+
+  /* ── Tab bar ───────────────────────────────────────────────── */
+  .bg-\[#FAFAFA\]             { background-color: var(--tabbar-bg) !important; }
+
+  /* ── Inputs & selects ──────────────────────────────────────── */
+  input, select, textarea {
+    background-color: var(--bg-elevated) !important;
+    color:            var(--text-primary) !important;
+    border-color:     var(--border-default) !important;
+  }
+  input::placeholder,
+  textarea::placeholder { color: var(--text-muted) !important; }
+
+  /* ── Scrollbars ────────────────────────────────────────────── */
+  ::-webkit-scrollbar-thumb            { background-color: var(--scrollbar-thumb) !important; }
+  ::-webkit-scrollbar-thumb:hover      { background-color: var(--scrollbar-hover) !important; }
+
+  /* ── Buttons ───────────────────────────────────────────────── */
+  button:hover { background-color: var(--bg-elevated); }
 }
 
-/* Light Theme Syntax Highlighting Colors */
-.token-keyword { color: #1E1F22; font-weight: 500; }
-.token-function { color: #1E1F22; }
-.token-string { color: #6ABF69; }
-.token-variable { color: #1E1F22; }
-.token-comment { color: #A9B1C7; }
-.token-operator { color: #2B2D30; }
-.token-number { color: #A9B1C7; }
-/* ── Smooth global transitions ─────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════
+   Smooth global transitions
+   ══════════════════════════════════════════════════════════════ */
 * {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -48,7 +218,9 @@ button {
   transition: background-color 150ms ease, color 150ms ease, opacity 150ms ease, transform 100ms ease;
 }
 
-/* ── Modal animations ──────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════
+   Animations
+   ══════════════════════════════════════════════════════════════ */
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -59,51 +231,44 @@ button {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* ── Sidebar scrollbar ─────────────────────────────────────── */
-.sidebar-scroll::-webkit-scrollbar {
-  width: 4px;
-}
-.sidebar-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.sidebar-scroll::-webkit-scrollbar-thumb {
-  background-color: #e5e7eb;
-  border-radius: 10px;
-}
-.sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: #d1d5db;
-}
+/* ══════════════════════════════════════════════════════════════
+   Scrollbars (light theme base)
+   ══════════════════════════════════════════════════════════════ */
+.sidebar-scroll::-webkit-scrollbar         { width: 4px; }
+.sidebar-scroll::-webkit-scrollbar-track  { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb  { background-color: var(--scrollbar-thumb); border-radius: 10px; }
+.sidebar-scroll::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-hover); }
 
-/* ── Terminal scrollbar ────────────────────────────────────── */
-.xterm-viewport::-webkit-scrollbar {
-  width: 5px;
-}
-.xterm-viewport::-webkit-scrollbar-thumb {
-  background-color: #d1d5db;
-  border-radius: 6px;
-}
+.xterm-viewport::-webkit-scrollbar        { width: 5px; }
+.xterm-viewport::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb); border-radius: 6px; }
 
-/* ── Status bar icons ─────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════
+   Light Theme Syntax Highlighting
+   ══════════════════════════════════════════════════════════════ */
+.token-keyword   { color: #1E1F22; font-weight: 500; }
+.token-function  { color: #1E1F22; }
+.token-string    { color: #6ABF69; }
+.token-variable  { color: #1E1F22; }
+.token-comment   { color: #A9B1C7; }
+.token-operator  { color: #2B2D30; }
+.token-number    { color: #A9B1C7; }
+
+/* ══════════════════════════════════════════════════════════════
+   Misc
+   ══════════════════════════════════════════════════════════════ */
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
 }
 
-/* ── Active nav indicator ─────────────────────────────────── */
-.nav-active-pip {
-  animation: pipIn 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
+.nav-active-pip { animation: pipIn 150ms cubic-bezier(0.4, 0, 0.2, 1); }
 
 @keyframes pipIn {
   from { opacity: 0; transform: translateY(-50%) scaleY(0.4); }
   to   { opacity: 1; transform: translateY(-50%) scaleY(1); }
 }
 
-/* ── Hide scrollbar (tab bar) ──────────────────────────────── */
 .hide-scrollbar::-webkit-scrollbar { display: none; }
-.hide-scrollbar { scrollbar-width: none; }
+.hide-scrollbar                    { scrollbar-width: none; }
 
-/* ── Editor drag ghost ─────────────────────────────────────── */
-[draggable] { user-select: none; }
-
-/* ── Split divider hit area ────────────────────────────────── */
+[draggable]    { user-select: none; }
 .split-divider { cursor: col-resize; }

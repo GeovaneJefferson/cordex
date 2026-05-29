@@ -29,11 +29,26 @@ export const ExtensionPanel: React.FC = () => {
 
   const handleInstall = async (ext: Extension) => {
     setInstalling(ext.id);
-    // Simulate install delay (real implementations would call IPC)
-    await new Promise(r => setTimeout(r, 1200));
+
+    // For extensions with real installCommands, print them to the terminal
+    if (ext.installCommands?.length) {
+      for (const cmd of ext.installCommands) {
+        (window as any).Cordex?.terminal?.writeActive?.(cmd + '\n');
+      }
+      // Give IPC a moment, then mark installed
+      await new Promise(r => setTimeout(r, 600));
+    } else {
+      await new Promise(r => setTimeout(r, 900));
+    }
+
     setExtensionState(ext.id, { status: 'installed', enabled: true });
     setInstalling(null);
     refresh();
+
+    // If this extension opens a panel, trigger it immediately after install
+    if (ext.panelType === 'android-emulator') {
+      setTimeout(() => (window as any).__cordexOpenEmulator?.(), 300);
+    }
   };
 
   const handleToggle = (ext: Extension) => {
@@ -68,7 +83,8 @@ export const ExtensionPanel: React.FC = () => {
       </div>
 
       {/* List */}
-      <div style={{ flex:1, overflowY:'auto', padding:'4px 0' }}>
+      <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', minHeight:0, padding:'4px 0' }}
+        className="sidebar-scroll">
         {grouped.map(({ cat, list }) => (
           <div key={cat}>
             <div style={{ padding:'8px 12px 3px', fontSize:9, fontWeight:700,
@@ -135,8 +151,9 @@ const ExtensionRow: React.FC<{
                 padding:'1px 5px', borderRadius:8, fontWeight:600 }}>OFF</span>
             )}
           </div>
-          <div style={{ fontSize:10, color:'#64748b', lineHeight:1.4,
-            overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2,
+          <div style={{ fontSize:10, color:'#64748b', lineHeight:1.5,
+            overflow:'hidden', display:'-webkit-box',
+            WebkitLineClamp: expanded ? 999 : 3,
             WebkitBoxOrient:'vertical' }}>
             {ext.description}
           </div>
@@ -196,11 +213,34 @@ const ExtensionRow: React.FC<{
               </div>
             </div>
           )}
-          {ext.installNote && (
+          {ext.installCommands && ext.installCommands.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize:9, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', marginBottom:4 }}>
+                Install Commands
+              </div>
+              <div style={{ background:'#0f172a', borderRadius:6, padding:'7px 10px', fontFamily:'monospace', fontSize:10, lineHeight:1.7 }}>
+                {ext.installCommands.map((cmd, i) => (
+                  <div key={i} style={{ color: cmd.startsWith('#') ? '#64748b' : '#86efac' }}>{cmd}</div>
+                ))}
+              </div>
+            </div>
+          )}
+          {ext.installNote && !ext.installCommands?.length && (
             <div style={{ fontSize:10, color:'#64748b', background:'#f8fafc',
               borderRadius:5, padding:'5px 8px', fontFamily:'monospace' }}>
               ℹ {ext.installNote}
             </div>
+          )}
+          {ext.panelType && isInstalled && ext.enabled && (
+            <button
+              onClick={() => {
+                if (ext.panelType === 'android-emulator') (window as any).__cordexOpenEmulator?.();
+              }}
+              style={{ marginTop:4, fontSize:10, padding:'3px 10px', borderRadius:5, border:'none',
+                background:'#22c55e', color:'white', cursor:'pointer', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
+              <span className="material-symbols-outlined" style={{ fontSize:12 }}>open_in_new</span>
+              Open Panel
+            </button>
           )}
           {isInstalled && (
             <button onClick={onUninstall} style={{

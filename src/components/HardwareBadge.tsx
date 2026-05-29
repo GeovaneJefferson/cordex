@@ -81,17 +81,17 @@ export const HardwareBadge: React.FC = () => {
             <Row label="RAM" value={`${hw.total_ram_gb} GB`} />
             <Row label="Tier" value={hw.capability}
               color={hw.capability === 'PRO' ? 'text-orange-600' : hw.capability === 'MID' ? 'text-blue-600' : 'text-gray-500'} />
-            {hw.llama_flags?.length > 0 && (
+            {hw.llama_flags?.length ? (
               <>
                 <div className="border-t border-gray-100 my-2" />
                 <div>
                   <span className="text-gray-400 block mb-1">Ollama flags</span>
                   <code className="block bg-gray-50 rounded px-2 py-1 text-[10px] text-gray-700 font-mono break-all">
-                    {hw.llama_flags.join(' ')}
+                    {hw.llama_flags!.join(' ')}
                   </code>
                 </div>
               </>
-            )}
+            ) : null}
             {hw.gpu_reason && (
               <p className={`mt-2 leading-relaxed ${supported ? 'text-gray-400' : 'text-amber-600'}`}>{hw.gpu_reason}</p>
             )}

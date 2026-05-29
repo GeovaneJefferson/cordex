@@ -8,9 +8,9 @@ const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json')
 const DEFAULT_SETTINGS = {
   fontSize: 13,
   autocompleteModel: 'qwen2.5-coder:1.5b-base',
-  analysisModel:     'qwen2.5-coder:3b',
+  analysisModel:     'qwen2.5-coder:7b',
   embedModel:        'nomic-embed-text',
-  flowModel:         'cordex-flow',
+  flowModel:         'qwen2.5-coder:7b',
 }
 
 let cachedSettings = null

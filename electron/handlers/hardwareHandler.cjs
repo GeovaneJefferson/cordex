@@ -79,7 +79,7 @@ module.exports = function(mainWindow) {
       if (!res.ok) return { valid: false, message: 'Ollama not running. Run: ollama serve' }
       const data = await res.json()
       const models = data.models ?? []
-      if (models.length === 0) return { valid: false, message: 'No models installed. Run: ollama pull qwen2.5-coder:3b' }
+      if (models.length === 0) return { valid: false, message: 'No models installed. Run: ollama pull qwen2.5-coder:7b' }
       return { valid: true, message: '' }
     } catch {
       return { valid: false, message: 'Ollama not running. Run: ollama serve' }
@@ -115,10 +115,15 @@ module.exports = function(mainWindow) {
   setTimeout(async () => {
     const info = await ollamaServer.getStatus()
     if (info.status === 'running') {
-      console.log('[hw] Ollama is running ✓ model:', info.model ?? 'none')
+      const settings = loadSettings()
+      const activeModel = settings.analysisModel || settings.autocompleteModel || info.model || 'none'
+      console.log(settings.analysisModel);
+      console.log(settings.autocompleteModel);
+      console.log(info.model);
+      console.log('[hw] Ollama is running ✓  active model:', activeModel, '| available models:', info.models?.length ?? 0)
     } else {
       console.warn('[hw] Ollama not detected. Run: ollama serve')
-      if (!info.model) console.log('  No models found. Run: ollama pull qwen2.5-coder:3b')
+      if (!info.model) console.log('  No models found. Run: ollama pull qwen2.5-coder:7b')
     }
   }, 2500)
 }

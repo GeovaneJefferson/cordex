@@ -60,7 +60,7 @@ function SimpleDiff({ original, restored }: { original: string; restored: string
     }>
       {
         changed.length === 0 && (
-          <div style={{ padding: '4px 12px', color: '#6b7280', fontStyle: 'italic' }}>
+          <div style={{ padding: '4px 12px', color: '#93a1a1', fontStyle: 'italic' }}>
             Identical to current content
           </div>
         )}
@@ -85,7 +85,7 @@ function SimpleDiff({ original, restored }: { original: string; restored: string
         ))}
       {
         changed.length > 30 && (
-          <div style={{ padding: '4px 12px', color: '#6b7280', fontStyle: 'italic' }}>
+          <div style={{ padding: '4px 12px', color: '#93a1a1', fontStyle: 'italic' }}>
             … {changed.length - 30} more changed lines
           </div>
         )
@@ -192,19 +192,19 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', height: '100%',
-      background: 'white', borderLeft: '1px solid #e2e8f0',
+      background: 'var(--bg-app)', borderLeft: '1px solid var(--border-default)',
     }
     }>
       {/* ── Header ─────────────────────────────────────────────────── */}
       < div style={{
         display: 'flex', alignItems: 'center', gap: 8,
-        padding: '10px 12px', borderBottom: '1px solid #e2e8f0',
+        padding: '10px 12px', borderBottom: '1px solid var(--border-default)',
         flexShrink: 0,
       }}>
         <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#f97316' }}>
           history
         </span>
-        < span style={{ fontWeight: 600, fontSize: 13, color: '#111827', flex: 1 }}>
+        < span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', flex: 1 }}>
           Local History
         </span>
         {
@@ -213,20 +213,20 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
               onClick={handleClearAll}
               title="Clear all history for this file"
               style={{
-                fontSize: 11, color: '#9ca3af', background: 'none', border: 'none',
+                fontSize: 11, color: 'var(--text-muted)', background: 'none', border: 'none',
                 cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
                 transition: 'color 0.15s',
               }
               }
               onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#9ca3af')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
             >
               Clear all
             </button>
           )}
         <button onClick={onClose} style={{
           background: 'none', border: 'none', cursor: 'pointer',
-          color: '#9ca3af', lineHeight: 1, padding: 2, borderRadius: 4,
+          color: 'var(--text-muted)', lineHeight: 1, padding: 2, borderRadius: 4,
           display: 'flex', alignItems: 'center',
         }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}> close </span>
@@ -238,11 +238,11 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
         activeTab && !noFile && (
           <div style={
             {
-              padding: '6px 12px', background: '#f8fafc',
-              borderBottom: '1px solid #e2e8f0', flexShrink: 0,
+              padding: '6px 12px', background: 'var(--bg-elevated)',
+              borderBottom: '1px solid var(--border-default)', flexShrink: 0,
             }
           }>
-            <span style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
               {activeTab.name}
             </span>
           </div>
@@ -259,7 +259,7 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
 
         {
           noFile && (
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 32, display: 'block', marginBottom: 8 }
               }>
                 insert_drive_file
@@ -270,7 +270,7 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
 
         {
           !noFile && loading && (
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 20, animation: 'spin 1s linear infinite' }
               }>
                 autorenew
@@ -280,7 +280,7 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
 
         {
           !noFile && !loading && snapshots.length === 0 && (
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 32, display: 'block', marginBottom: 8, opacity: 0.5 }
               }>
                 history
@@ -305,13 +305,13 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
                 < div style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '6px 12px',
-                  background: isPreviewing ? '#fff7ed' : 'transparent',
+                  background: isPreviewing ? 'rgba(249,115,22,0.08)' : 'transparent',
                   borderLeft: isPreviewing ? '2px solid #f97316' : '2px solid transparent',
                   cursor: 'pointer',
                   transition: 'background 0.1s',
                 }
                 }
-                  onMouseEnter={e => { if (!isPreviewing) e.currentTarget.style.background = '#f8fafc'; }}
+                  onMouseEnter={e => { if (!isPreviewing) e.currentTarget.style.background = 'var(--bg-elevated)'; }}
                   onMouseLeave={e => { if (!isPreviewing) e.currentTarget.style.background = 'transparent'; }}
                   onClick={() => handlePreview(snap)}
                 >
@@ -320,10 +320,10 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
                     {isPreviewing ? 'unfold_less' : 'history'}
                   </span>
                   < div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: '#111827', fontWeight: 500 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500 }}>
                       {fmtTime(snap.timestamp)}
                     </div>
-                    < div style={{ fontSize: 10, color: '#94a3b8' }}> {fmtSize(snap.size)} </div>
+                    < div style={{ fontSize: 10, color: 'var(--text-muted)' }}> {fmtSize(snap.size)} </div>
                   </div>
 
                   {/* Action buttons — shown on hover via parent group */}
@@ -334,8 +334,8 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
                       title="Restore this version"
                       style={{
                         fontSize: 10, padding: '2px 7px', borderRadius: 4,
-                        border: '1px solid #e2e8f0', background: 'white',
-                        color: '#374151', cursor: 'pointer',
+                        border: '1px solid var(--border-default)', background: 'var(--bg-elevated)',
+                        color: 'var(--text-secondary)', cursor: 'pointer',
                         opacity: isRestoring ? 0.5 : 1,
                       }}
                     >
@@ -348,11 +348,11 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
                       style={{
                         fontSize: 10, padding: '2px 5px', borderRadius: 4,
                         border: '1px solid transparent', background: 'none',
-                        color: '#9ca3af', cursor: 'pointer',
+                        color: 'var(--text-muted)', cursor: 'pointer',
                         opacity: isDeleting ? 0.5 : 1,
                       }}
                       onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
-                      onMouseLeave={e => (e.currentTarget.style.color = '#9ca3af')}
+                      onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
                     >
                       <span className="material-symbols-outlined" style={{ fontSize: 13 }}> delete </span>
                     </button>
@@ -393,8 +393,8 @@ export const LocalHistoryPanel: React.FC<{ onClose: () => void }> = ({ onClose }
         snapshots.length > 0 && (
           <div style={
             {
-              padding: '6px 12px', borderTop: '1px solid #e2e8f0',
-              fontSize: 10, color: '#9ca3af', flexShrink: 0,
+              padding: '6px 12px', borderTop: '1px solid var(--border-default)',
+              fontSize: 10, color: 'var(--text-muted)', flexShrink: 0,
             }
           }>
             {snapshots.length} snapshot{snapshots.length !== 1 ? 's' : ''} stored

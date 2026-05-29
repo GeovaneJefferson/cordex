@@ -21,14 +21,14 @@ const { ipcMain } = require('electron')
 const { loadSettings } = require('../utils/settings.cjs')
 const { llamaGenerate, extractText, streamText } = require('../utils/ollamaClient.cjs')
 const { autocompletePrompt, bugFixPrompt, refactorPrompt, explainPrompt, generatePrompt, architecturePrompt } = require('./promptTemplates.cjs')
-const { buildContext }  = require('./retrieval.cjs')
-const embeddingIndex    = require('./embeddingIndex.cjs')
+const { buildContext } = require('./retrieval.cjs')
+const embeddingIndex = require('./embeddingIndex.cjs')
 
 const OLLAMA_BASE = 'http://127.0.0.1:11434'
 
 // ── Models ─────────────────────────────────────────────────────────────
-const MODEL_FAST   = 'qwen2.5-coder:1.5b-base'  // autocomplete
-const MODEL_AGENT  = 'qwen2.5-coder:7b'          // reasoning
+const MODEL_FAST = 'qwen2.5-coder:1.5b-base'  // autocomplete
+const MODEL_AGENT = 'qwen2.5-coder:7b'          // reasoning
 
 function resolveModel(modelName, settings, fallback) {
   return modelName || settings?.autocompleteModel || fallback
@@ -45,13 +45,13 @@ function newCtrl(key) {
 
 // ── Autocomplete (FIM, fast, no retrieval) ────────────────────────────
 async function handleAutocomplete(ev, { before, after, language, model }) {
-  const ctrl  = newCtrl('autocomplete')
+  const ctrl = newCtrl('autocomplete')
   const settings = loadSettings()
 
   // Decide which model to use — prefer the explicit param, then settings, then default
   const useModel = model || settings.autocompleteModel || MODEL_FAST
 
-  const prompt   = autocompletePrompt({ before, after, language })
+  const prompt = autocompletePrompt({ before, after, language })
 
   try {
     const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
@@ -100,7 +100,7 @@ async function handleReason(ev, mainWindow, {
   model,
   skipRetrieval = false,
 }) {
-  const ctrl     = newCtrl('reason')
+  const ctrl = newCtrl('reason')
   const settings = loadSettings()
   const useModel = model || settings.analysisModel || MODEL_AGENT
 
@@ -109,7 +109,7 @@ async function handleReason(ev, mainWindow, {
   if (!skipRetrieval && projectRoot) {
     const query = instruction || errorMessage || code?.slice(0, 200) || ''
     if (query.trim()) {
-      try { context = await buildContext(query, projectRoot) } catch {}
+      try { context = await buildContext(query, projectRoot) } catch { }
     }
   }
 
@@ -202,15 +202,15 @@ module.exports = function (mainWindow) {
   ipcMain.handle('ai:embed-project', async (_ev, { projectRoot }) => {
     // Forward progress events to renderer
     const onProgress = (data) => mainWindow?.webContents?.send('ai:embed:progress', data)
-    const onDone     = (data) => mainWindow?.webContents?.send('ai:embed:done', data)
-    const onError    = (msg)  => mainWindow?.webContents?.send('ai:embed:error', { error: msg })
+    const onDone = (data) => mainWindow?.webContents?.send('ai:embed:done', data)
+    const onError = (msg) => mainWindow?.webContents?.send('ai:embed:error', { error: msg })
 
     embeddingIndex.on('progress', onProgress)
     embeddingIndex.on('done', onDone)
     embeddingIndex.on('error', onError)
 
     const result = await embeddingIndex.indexProject(projectRoot)
-
+    console.log('[aiRouter] embed result:', result);
     embeddingIndex.off('progress', onProgress)
     embeddingIndex.off('done', onDone)
     embeddingIndex.off('error', onError)

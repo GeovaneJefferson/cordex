@@ -3,7 +3,7 @@
 # import json
 
 # OLLAMA_URL = "http://localhost:11434/api/generate"
-# MODEL_NAME = "qwen2.5-coder:3b"
+# MODEL_NAME = "qwen2.5-coder:7b"
 # # SCRIPT_DIR = "./pipeline"
 # SCRIPT_DIR = "/home/geovane/MEGA/python/cordex/"
 # DOCS_DIR = "./docs"

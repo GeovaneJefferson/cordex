@@ -1,11 +1,11 @@
 'use strict'
-const { ipcMain }  = require('electron')
-const path         = require('path')
-const fs           = require('fs-extra')
-const { app }      = require('electron')
+const { ipcMain } = require('electron')
+const path = require('path')
+const fs = require('fs-extra')
+const { app } = require('electron')
 const { loadSettings } = require('../utils/settings.cjs')
 const { llamaGenerate, resolveBackend, extractText } = require('../utils/ollamaClient.cjs')
-const { scanModels }   = require('../utils/ollamaServer.cjs')
+const { scanModels } = require('../utils/ollamaServer.cjs')
 
 // ── Dependency Manifest Builder ───────────────────────────────────────────────
 const IMPORT_PATTERNS = [
@@ -103,7 +103,7 @@ async function buildDependencyManifest(code, filePath, projectRoot) {
       lines.push(`Exports: ${sigs.join(', ')}`)
       const snippet = content.slice(0, 1200).replace(/\n{3,}/g, '\n\n')
       lines.push(`Source (truncated):\n${snippet}`)
-    } catch {}
+    } catch { }
   }
 
   if (lines.length === 1) return ''
@@ -127,30 +127,69 @@ STRICT RULES — READ CAREFULLY:
 7. Include the source line number in the "line" field for each node (best estimate from the code).
 8. Max 14 nodes. Group fine-grained steps into meaningful blocks.
 9. Every function called must be represented by its call, NOT the import that brought it in.
+10. Output must be pure JSON with NO trailing commas, NO comments, and all keys must be double-quoted.
 ${manifestSection}
 Return ONLY valid JSON, no markdown, no explanation:
 {"nodes":[{"id":"string","type":"string","label":"string","description":"string","line":0}],"edges":[{"source":"string","target":"string","label":"string"}]}`
 }
 
+/**
+ * Try to repair malformed JSON from an AI response.
+ * Handles common issues: trailing commas, unquoted keys, missing closing braces.
+ * Returns a clean object or throws if unrecoverable.
+ */
+function safeJsonParse(raw) {
+  // Remove trailing commas before } or ]
+  let cleaned = raw.replace(/,(\s*[}\]])/g, '$1');
+  // Ensure keys are double-quoted (simple heuristic)
+  cleaned = cleaned.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3');
+  try {
+    return JSON.parse(cleaned);
+  } catch (e1) {
+    // Balance braces/brackets
+    let openBraces = 0, openBrackets = 0;
+    for (const ch of cleaned) {
+      if (ch === '{') openBraces++;
+      else if (ch === '}') openBraces--;
+      else if (ch === '[') openBrackets++;
+      else if (ch === ']') openBrackets--;
+    }
+    if (openBraces > 0) cleaned += '}'.repeat(openBraces);
+    if (openBrackets > 0) cleaned += ']'.repeat(openBrackets);
+    try {
+      return JSON.parse(cleaned);
+    } catch (e2) {
+      // Fallback: extract the largest valid JSON object
+      const matches = cleaned.match(/\{(?:[^{}]|(?:\{[^{}]*\}))*\}/g);
+      if (matches) {
+        for (const m of matches.reverse()) {
+          try { return JSON.parse(m); } catch {}
+        }
+      }
+      throw e2;
+    }
+  }
+}
+
 // ── IPC Handlers ──────────────────────────────────────────────────────────────
-module.exports = function() {
+module.exports = function () {
 
   ipcMain.handle('analyze-flow', async (_ev, payload) => {
-    const code        = typeof payload === 'string' ? payload : payload?.code ?? ''
-    const filePath    = typeof payload === 'object'  ? payload?.filePath    : null
-    const projectRoot = typeof payload === 'object'  ? payload?.projectRoot : null
+    const code = typeof payload === 'string' ? payload : payload?.code ?? ''
+    const filePath = typeof payload === 'object' ? payload?.filePath : null
+    const projectRoot = typeof payload === 'object' ? payload?.projectRoot : null
 
     if (!code || !code.trim()) return { nodes: [], edges: [] }
 
     await resolveBackend()
 
     try {
-      const settings        = loadSettings()
+      const settings = loadSettings()
       const availableModels = await scanModels()
-      const defaultModel    = availableModels.length > 0 ? availableModels[0].name : null
-      const modelToUse      = settings.flowModel || settings.analysisModel || defaultModel
+      const defaultModel = availableModels.length > 0 ? availableModels[0].name : null
+      const modelToUse = settings.flowModel || settings.analysisModel || defaultModel
 
-      if (!modelToUse) throw new Error('No Ollama model found. Run: ollama pull qwen2.5-coder:3b')
+      if (!modelToUse) throw new Error('No Ollama model found.')
 
       const manifest = await buildDependencyManifest(code, filePath, projectRoot)
       if (manifest) console.log('[flowHandler] Dependency manifest built:', manifest.split('\n').slice(0, 4).join(' | '))
@@ -158,12 +197,12 @@ module.exports = function() {
       const systemPrompt = buildSystemPrompt(manifest)
 
       const res = await llamaGenerate({
-        model:        modelToUse,
+        model: modelToUse,
         systemPrompt,
-        prompt:       `Code to analyze:\n\`\`\`\n${code.slice(0, 8000)}\n\`\`\``,
-        temperature:  0,
-        num_predict:  2048,
-        stream:       false,
+        prompt: `Code to analyze:\n\`\`\`\n${code.slice(0, 8000)}\n\`\`\``,
+        temperature: 0,
+        num_predict: 2048,
+        stream: false,
       })
 
       let raw = await extractText(res)
@@ -176,15 +215,14 @@ module.exports = function() {
         .trim()
 
       const jsonStart = raw.indexOf('{')
-      const jsonEnd   = raw.lastIndexOf('}')
+      const jsonEnd = raw.lastIndexOf('}')
       if (jsonStart === -1 || jsonEnd === -1) {
         console.error('[analyze-flow] Raw response:', raw)
         throw new Error('No JSON found in response.')
       }
-
-      const flowData = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
+      // ✅ FIX: use safeJsonParse instead of raw JSON.parse
+      const flowData = safeJsonParse(raw.slice(jsonStart, jsonEnd + 1))
       return buildReactFlowGraph(flowData)
-
     } catch (err) {
       console.error('[analyze-flow] Error:', err.message)
       return { nodes: [], edges: [], error: err.message }
@@ -253,8 +291,8 @@ module.exports = function() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // EXECUTION ENGINE
 // ═══════════════════════════════════════════════════════════════════════════════
-const { spawn }  = require('child_process')
-const os         = require('os')
+const { spawn } = require('child_process')
+const os = require('os')
 
 const EXECUTABLE_LANGS = new Set(['python', 'javascript', 'typescript', 'node', 'cpp', 'c', 'cjs', 'mjs'])
 const EXT_TO_LANG = { py: 'python', js: 'javascript', cjs: 'javascript', mjs: 'javascript', ts: 'typescript', tsx: 'typescript', cpp: 'cpp', cc: 'cpp', c: 'c' }
@@ -270,11 +308,11 @@ function detectLangFromPath(filePath) {
 // Quick runtime availability check
 function checkRuntime(lang) {
   const cmdMap = {
-    python:     ['python3', '--version'],
+    python: ['python3', '--version'],
     javascript: ['node', '--version'],
     typescript: ['node', '--version'],
-    cpp:        ['g++', '--version'],
-    c:          ['gcc', '--version'],
+    cpp: ['g++', '--version'],
+    c: ['gcc', '--version'],
   }
   const args = cmdMap[lang]
   if (!args) return Promise.resolve(false)
@@ -324,11 +362,11 @@ function runProcess(cmd, args, timeout) {
 function extractErrorLine(stderr, lang) {
   if (!stderr) return null
   const pats = {
-    python:     [/File ".*?", line (\d+)/,  /^\s*line (\d+)/m],
+    python: [/File ".*?", line (\d+)/, /^\s*line (\d+)/m],
     javascript: [/[^ ]+:(\d+):\d+\)?\s*$/m, /at .+:(\d+):\d+/],
-    typescript: [/[^ ]+\.tsx?:(\d+):\d+/,  /at .+:(\d+):\d+/],
-    cpp:        [/:(\d+):\d+: (?:error|fatal)/,  /line (\d+)/],
-    c:          [/:(\d+):\d+: (?:error|fatal)/],
+    typescript: [/[^ ]+\.tsx?:(\d+):\d+/, /at .+:(\d+):\d+/],
+    cpp: [/:(\d+):\d+: (?:error|fatal)/, /line (\d+)/],
+    c: [/:(\d+):\d+: (?:error|fatal)/],
   }
   for (const re of (pats[lang] ?? [])) {
     const m = re.exec(stderr)
@@ -340,7 +378,7 @@ function extractErrorLine(stderr, lang) {
 // Main execution entry point — writes to temp file, runs, cleans up
 async function executeCode(code, lang, timeout = 12000) {
   const extMap = { python: '.py', javascript: '.js', typescript: '.ts', cpp: '.cpp', c: '.c' }
-  const ext    = extMap[lang] ?? '.txt'
+  const ext = extMap[lang] ?? '.txt'
   const tmpFile = path.join(os.tmpdir(), `cordex_${Date.now()}${ext}`)
 
   try {
@@ -359,13 +397,13 @@ async function executeCode(code, lang, timeout = 12000) {
       }
     } else if (lang === 'cpp' || lang === 'c') {
       const compiler = lang === 'cpp' ? 'g++' : 'gcc'
-      const binary   = tmpFile.replace(ext, '')
-      const compile  = await runProcess(compiler, [tmpFile, '-o', binary, '-std=c++17'], timeout)
+      const binary = tmpFile.replace(ext, '')
+      const compile = await runProcess(compiler, [tmpFile, '-o', binary, '-std=c++17'], timeout)
       if (!compile.success) {
         return { ...compile, mode: 'execution', errorLine: extractErrorLine(compile.stderr, lang), phase: 'compile' }
       }
       result = await runProcess(binary, [], Math.min(timeout, 8000))
-      try { await fs.remove(binary) } catch {}
+      try { await fs.remove(binary) } catch { }
     } else {
       return { success: false, stdout: '', stderr: `Unsupported language: ${lang}`, exitCode: -1, mode: 'simulation', errorLine: null }
     }
@@ -373,16 +411,13 @@ async function executeCode(code, lang, timeout = 12000) {
     return {
       ...result,
       mode: 'execution',
-      // Exit 0 with stderr containing errors = "success with warnings"
-      // Python's try/except can swallow errors and still exit 0.
-      // We check for error/exception patterns in stderr even on clean exit.
       hasStderrErrors: result.stderr ? STDERR_ERROR_RE.test(result.stderr) : false,
       errorLine: result.success && !STDERR_ERROR_RE.test(result.stderr ?? '')
         ? null
         : extractErrorLine(result.stderr, lang),
     }
   } finally {
-    try { await fs.remove(tmpFile) } catch {}
+    try { await fs.remove(tmpFile) } catch { }
   }
 }
 
@@ -390,29 +425,27 @@ async function executeCode(code, lang, timeout = 12000) {
 // SIMULATION ENGINE  (static analysis — no subprocess)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Risk pattern detectors — language-agnostic heuristics
 const RISK_CHECKS = [
-  { name: 'Assignment in condition',   re: /if\s*\([^)]*(?<![!<>=])=(?!=)[^)]*\)/ },
+  { name: 'Assignment in condition', re: /if\s*\([^)]*(?<![!<>=])=(?!=)[^)]*\)/ },
   { name: 'Possible null dereference', re: /(?:null|None|undefined)\s*\.\w+/ },
-  { name: 'Array index in loop',       re: /(?:for|while)[\s\S]{0,200}\w+\[(?!\s*[0-9]+\s*\])/ },
-  { name: 'Recursive call risk',       re: /function\s+(\w+)[\s\S]{0,300}\1\s*\(/ },
-  { name: 'Bare except / catch',       re: /(?:except\s*:|catch\s*\(\s*\))/ },
-  { name: 'Hardcoded credentials',     re: /(?:password|secret|token|api_key)\s*=\s*['"][^'"]{4,}['"]/ },
+  { name: 'Array index in loop', re: /(?:for|while)[\s\S]{0,200}\w+\[(?!\s*[0-9]+\s*\])/ },
+  { name: 'Recursive call risk', re: /function\s+(\w+)[\s\S]{0,300}\1\s*\(/ },
+  { name: 'Bare except / catch', re: /(?:except\s*:|catch\s*\(\s*\))/ },
+  { name: 'Hardcoded credentials', re: /(?:password|secret|token|api_key)\s*=\s*['"][^'"]{4,}['"]/ },
 ]
 
 function codeRisks(snippet) {
   return RISK_CHECKS.filter(r => r.re.test(snippet)).map(r => r.name)
 }
 
-// Map node labels to approximate source line ranges using identifier scanning
 function buildLineMap(nodes, lines) {
   const identMap = new Map()
   const defPatterns = [
-    /^(?:async\s+)?def\s+(\w+)/,           // Python def
-    /^class\s+(\w+)/,                       // Python/JS/Java class
-    /^(?:export\s+)?(?:async\s+)?function\s+(\w+)/, // JS function
-    /^(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(/, // Arrow fn
-    /^\w[\w:*&\s]+\s+(\w+)\s*\([^)]*\)\s*\{?$/, // C/C++ function
+    /^(?:async\s+)?def\s+(\w+)/,
+    /^class\s+(\w+)/,
+    /^(?:export\s+)?(?:async\s+)?function\s+(\w+)/,
+    /^(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(/,
+    /^\w[\w:*&\s]+\s+(\w+)\s*\([^)]*\)\s*\{?$/,
   ]
 
   lines.forEach((raw, i) => {
@@ -425,7 +458,7 @@ function buildLineMap(nodes, lines) {
 
   const result = {}
   for (const node of nodes) {
-    const d     = node.data ?? node
+    const d = node.data ?? node
     const label = (d.label ?? node.label ?? node.id).toLowerCase()
     const words = label.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 2)
 
@@ -440,51 +473,46 @@ function buildLineMap(nodes, lines) {
   return result
 }
 
-// Build the topological execution path through nodes
 function topoOrder(nodes, edges) {
-  const adjList  = {}
+  const adjList = {}
   const inDegree = {}
   nodes.forEach(n => { adjList[n.id] = []; inDegree[n.id] = 0 })
   edges.forEach(e => { adjList[e.source]?.push(e.target); inDegree[e.target] = (inDegree[e.target] ?? 0) + 1 })
 
-  const queue  = nodes.filter(n => inDegree[n.id] === 0).map(n => n.id)
-  const order  = []
-  const seen   = new Set()
+  const queue = nodes.filter(n => inDegree[n.id] === 0).map(n => n.id)
+  const order = []
+  const seen = new Set()
   while (queue.length) {
     const id = queue.shift()
     if (seen.has(id)) continue
     seen.add(id); order.push(id)
-    ;(adjList[id] ?? []).forEach(next => {
-      inDegree[next] = (inDegree[next] ?? 1) - 1
-      if (inDegree[next] <= 0) queue.push(next)
-    })
+      ; (adjList[id] ?? []).forEach(next => {
+        inDegree[next] = (inDegree[next] ?? 1) - 1
+        if (inDegree[next] <= 0) queue.push(next)
+      })
   }
-  // Append any nodes not reached (disconnected)
   nodes.forEach(n => { if (!seen.has(n.id)) order.push(n.id) })
   return order
 }
 
 function simulateExecution(code, nodes, lang) {
-  const lines    = code.split('\n')
-  const lineMap  = buildLineMap(nodes, lines)
-  const ordered  = topoOrder(nodes, []) // We don't receive edges here; fallback to y-sort
+  const lines = code.split('\n')
+  const lineMap = buildLineMap(nodes, lines)
+  const ordered = topoOrder(nodes, []) // fallback
 
-  const executedNodes  = []
-  const riskNodes      = []   // [{ id, risks: string[] }]
-  const predictedNodes = []   // conditional branches
+  const executedNodes = []
+  const riskNodes = []
+  const predictedNodes = []
 
-  // Detect file-level risks
   const fileRisks = codeRisks(code)
 
-  // Sort nodes by Y position as a proxy for execution order
   const sorted = [...nodes].sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0))
 
   for (const node of sorted) {
-    const d        = node.data ?? node
+    const d = node.data ?? node
     const nodeType = d.nodeType ?? node.nodeType ?? 'call'
     const lineRange = lineMap[node.id]
 
-    // Extract the source snippet for this node (best-effort)
     const snippet = lineRange
       ? lines.slice(lineRange.start - 1, lineRange.end).join('\n')
       : (d.label ?? node.label ?? '')
@@ -496,16 +524,14 @@ function simulateExecution(code, nodes, lang) {
     } else if (localRisks.length > 0) {
       riskNodes.push({ id: node.id, risks: localRisks })
     } else if (nodeType === 'decision') {
-      predictedNodes.push(node.id)   // conditional — highlight as predicted
+      predictedNodes.push(node.id)
     } else if (nodeType === 'loop') {
-      // Loops are predicted (we don't know iteration count)
       predictedNodes.push(node.id)
     } else {
       executedNodes.push(node.id)
     }
   }
 
-  // Global file risks → mark the entry node as risky too if high-severity
   const highRisk = fileRisks.filter(r => r.includes('null') || r.includes('Assignment'))
   if (highRisk.length > 0 && executedNodes.length > 0) {
     const entryNode = sorted.find(n => (n.data ?? n).nodeType === 'entry')
@@ -521,13 +547,13 @@ function simulateExecution(code, nodes, lang) {
 
 // ── React Flow graph builder ───────────────────────────────────────────────────
 function buildReactFlowGraph({ nodes = [], edges = [] }) {
-  const adjList  = {}
+  const adjList = {}
   const inDegree = {}
 
   nodes.forEach(n => { inDegree[n.id] = 0; adjList[n.id] = [] })
   edges.forEach(e => {
     inDegree[e.target] = (inDegree[e.target] ?? 0) + 1
-    adjList[e.source]  = [...(adjList[e.source] ?? []), e.target]
+    adjList[e.source] = [...(adjList[e.source] ?? []), e.target]
   })
 
   const level = {}
@@ -562,35 +588,34 @@ function buildReactFlowGraph({ nodes = [], edges = [] }) {
   })
 
   const rfNodes = nodes.map(n => ({
-    id:          n.id,
-    type:        'flowNode',
-    position:    positions[n.id] ?? { x: IX, y: IY },
-    // Flat — FlowView reads these directly (not via .data)
-    nodeType:    n.type ?? 'call',
-    label:       n.label ?? n.id,
+    id: n.id,
+    type: 'flowNode',
+    position: positions[n.id] ?? { x: IX, y: IY },
+    nodeType: n.type ?? 'call',
+    label: n.label ?? n.id,
     description: n.description ?? null,
-    errorMsg:    n.errorMsg ?? null,
-    line:        n.line ?? null,    // source line number for error mapping
-    width:       260,
-    height:      100,
+    errorMsg: n.errorMsg ?? null,
+    line: n.line ?? null,
+    width: 260,
+    height: 100,
   }))
 
   const rfEdges = edges.map(e => {
-    const isError  = ['raises','error','catch'].includes(e.label)
-    const isFalse  = ['false','no','else'].includes(e.label)
+    const isError = ['raises', 'error', 'catch'].includes(e.label)
+    const isFalse = ['false', 'no', 'else'].includes(e.label)
     return {
-      id:           `${e.source}-${e.target}`,
-      source:       e.source,
-      target:       e.target,
-      label:        e.label ?? '',
-      animated:     !isError,
-      type:         'smoothstep',
-      labelStyle:   { fill: isError ? '#ef4444' : isFalse ? '#f59e0b' : '#6b7280', fontSize: 10, fontWeight: 500 },
+      id: `${e.source}-${e.target}`,
+      source: e.source,
+      target: e.target,
+      label: e.label ?? '',
+      animated: !isError,
+      type: 'smoothstep',
+      labelStyle: { fill: isError ? '#ef4444' : isFalse ? '#f59e0b' : '#6b7280', fontSize: 10, fontWeight: 500 },
       labelBgStyle: { fill: 'white', fillOpacity: 0.85 },
       labelBgPadding: [4, 3],
       style: {
-        stroke:          isError ? '#ef4444' : isFalse ? '#f59e0b' : '#94a3b8',
-        strokeWidth:     isError ? 2 : 1.5,
+        stroke: isError ? '#ef4444' : isFalse ? '#f59e0b' : '#94a3b8',
+        strokeWidth: isError ? 2 : 1.5,
         strokeDasharray: isError ? '6 3' : undefined,
       },
     }

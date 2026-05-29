@@ -3,6 +3,8 @@ import { TabBar } from './TabBar';
 import { SplitEditor } from './SplitEditor';
 import { BottomPanel } from './BottomPanel';
 import { BrowserPanel } from './BrowserPanel';
+import { AndroidEmulatorPanel } from './AndroidEmulatorPanel';
+import { CustomActionsPanel } from './CustomActionsPanel';
 import { ChatPanel } from './ChatPanel';
 import { LocalHistoryPanel } from './LocalHistoryPanel';
 import { useAppState } from '../store/AppContext';
@@ -14,26 +16,39 @@ const Cordex = (window as any).Cordex;
 const AIBtn: React.FC<{
   icon: string; label?: string; dark?: boolean;
   loading?: boolean; onClick?: () => void; title: string; shortcut?: string;
-  active?: boolean; iconStyle?: React.CSSProperties;
-}> = ({ icon, label, dark, loading, onClick, title, shortcut, active, iconStyle }) => (
-  <button title={`${title}${shortcut ? ` (${shortcut})` : ''}`} onClick={onClick} disabled={loading}
-    className={`flex items-center gap-1 px-3 py-1 rounded-full text-[11.5px] font-medium
-      transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-95
-      ${dark
-        ? 'bg-gray-900 text-white hover:bg-gray-700'
-        : active
-          ? 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100'
-          : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-      }`}>
-    <span
-      className={`material-symbols-outlined text-[14px] ${loading ? 'animate-spin' : ''}`}
-      style={iconStyle}
-    >
-      {loading ? 'autorenew' : icon}
-    </span>
-    {label}
-  </button>
-);
+  active?: boolean; iconStyle?: React.CSSProperties; hasSelection?: boolean; selectionPreview?: string;
+}> = ({ icon, label, dark, loading, onClick, title, shortcut, active, iconStyle, hasSelection, selectionPreview }) => {
+  const btnTitle = `${title}${shortcut ? ` (${shortcut})` : ''}${hasSelection ? ' — using selected code' : ''}`;
+  return (
+    <div style={{ position: 'relative' }}>
+      <button title={btnTitle} onClick={onClick} disabled={loading}
+        className={`flex items-center gap-1 px-3 py-1 rounded-full text-[11.5px] font-medium
+          transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-95
+          ${dark
+            ? 'bg-gray-900 text-white hover:bg-gray-700'
+            : active || hasSelection
+              ? 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+          }`}>
+        <span
+          className={`material-symbols-outlined text-[14px] ${loading ? 'animate-spin' : ''}`}
+          style={iconStyle}
+        >
+          {loading ? 'autorenew' : icon}
+        </span>
+        {label}
+      </button>
+      {hasSelection && (
+        <span style={{
+          position: 'absolute', top: -4, right: -4,
+          width: 16, height: 16, background: '#16a34a', borderRadius: '50%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'white', fontSize: '10px', fontWeight: 'bold', border: '2px solid white'
+        }} title={`Selection active: ${selectionPreview}`}>✓</span>
+      )}
+    </div>
+  );
+};
 
 const PreviewBtn: React.FC<{
   icon: string; title: string; active?: boolean; onClick: () => void;
@@ -59,42 +74,104 @@ const PreviewBtn: React.FC<{
 export const EditorContainer: React.FC = () => {
   const { state, dispatch } = useAppState();
   // Only keep the AI methods we actually use
-  const { analyzeCode, bugFixActiveTab } = useAI();
+  const { analyzeCode, bugFixActiveTab, improveActiveTab } = useAI();
 
   const [docLoading,     setDocLoading]     = useState(false);
   const [improveLoading, setImproveLoading] = useState(false);
   const [bugLoading,     setBugLoading]     = useState(false);
+  const [selectionInfo, setSelectionInfo] = useState<{ hasSelection: boolean; preview: string; lineCount: number }>({ hasSelection: false, preview: '', lineCount: 0 });
 
-  const [browserMode,     setBrowserMode]    = useState<'phone' | 'desktop'>('desktop');
+  const [browserMode,       setBrowserMode]      = useState<'phone' | 'desktop'>('desktop');
+  const [emulatorVisible,   setEmulatorVisible]  = useState(false);
+  const [actionsVisible,    setActionsVisible]    = useState(false);
   const [rightPanelWidth, setRightPanelWidth] = useState(350);
   const [isDraggingResizer, setIsDraggingResizer] = useState(false);
   const containerRef  = useRef<HTMLDivElement>(null);
+
+  // Poll for selection changes and update state for visual feedback
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const info = (window as any).__cordexGetSelectionInfo?.();
+      if (info) setSelectionInfo(info);
+    }, 100); // Poll every 100ms to catch selection changes
+    return () => clearInterval(interval);
+  }, []);
+
+  // Expose panel openers globally so Leftnav + extensions can trigger them
+  useEffect(() => {
+    (window as any).__cordexOpenEmulator = () => {
+      // Toggle behavior: if already visible, close it; otherwise open it
+      if (emulatorVisible) {
+        setEmulatorVisible(false);
+      } else {
+        setEmulatorVisible(true);
+        setActionsVisible(false);
+        if (state.browserVisible) dispatch({ type: 'TOGGLE_BROWSER' });
+        if (state.chatVisible)    dispatch({ type: 'TOGGLE_CHAT_PANEL' });
+      }
+    };
+    (window as any).__cordexOpenActions = () => {
+      // Toggle behavior: if already visible, close it; otherwise open it
+      if (actionsVisible) {
+        setActionsVisible(false);
+      } else {
+        setActionsVisible(true);
+        setEmulatorVisible(false);
+        if (state.browserVisible) dispatch({ type: 'TOGGLE_BROWSER' });
+        if (state.chatVisible)    dispatch({ type: 'TOGGLE_CHAT_PANEL' });
+      }
+    };
+    (window as any).__cordexToggleBrowser = () => {
+      if (!state.browserVisible && state.chatVisible) dispatch({ type: 'TOGGLE_CHAT_PANEL' });
+      if (!state.browserVisible && state.historyPanelVisible) dispatch({ type: 'TOGGLE_HISTORY_PANEL' });
+      dispatch({ type: 'TOGGLE_BROWSER' });
+    };
+    // Expose state getters so Leftnav can sync
+    (window as any).__cordexGetPanelState = () => ({
+      emulatorVisible,
+      actionsVisible,
+      browserVisible: state.browserVisible,
+      chatVisible: state.chatVisible,
+      historyPanelVisible: state.historyPanelVisible,
+    });
+  }, [emulatorVisible, actionsVisible, state.browserVisible, state.chatVisible, state.historyPanelVisible, dispatch]);
   const resizerRef    = useRef<HTMLDivElement>(null);
 
-  // ── Right-panel resize — native events only (avoids Electron synthetic/native mismatch)
+  // ── Right-panel resize — use a ref so closure always reads current width
+  const rightPanelWidthRef = useRef(350);
+  useEffect(() => { rightPanelWidthRef.current = rightPanelWidth; }, [rightPanelWidth]);
+
+  const rightPanelVisible = state.browserVisible || state.chatVisible || state.historyPanelVisible || emulatorVisible || actionsVisible;
+
   useEffect(() => {
     const el = resizerRef.current;
     if (!el) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       e.preventDefault();
       const startX = e.clientX;
-      let startW = rightPanelWidth;
-      const onMove = (mv: MouseEvent) => {
-        const w = Math.min(600, Math.max(250, startW + startX - mv.clientX));
+      const startW = rightPanelWidthRef.current; // always current — no stale closure
+      const onMove = (mv: PointerEvent) => {
+        const w = Math.min(700, Math.max(220, startW + (mv.clientX - startX)));
         setRightPanelWidth(w);
+        rightPanelWidthRef.current = w;
       };
       const onUp = () => {
         setIsDraggingResizer(false);
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
       };
       setIsDraggingResizer(true);
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
+      el.setPointerCapture?.(e.pointerId);
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
     };
-    el.addEventListener('mousedown', onDown);
-    return () => el.removeEventListener('mousedown', onDown);
-  }, [rightPanelWidth]);
+    el.addEventListener('pointerdown', onDown);
+    return () => el.removeEventListener('pointerdown', onDown);
+  }, [rightPanelVisible]);
 
   // ── toggleBrowser was missing its declaration ──────────────────────────
   const toggleBrowser = () => {
@@ -140,7 +217,7 @@ export const EditorContainer: React.FC = () => {
   const handleImprove = async () => {
     if (!activeTab) return;
     setImproveLoading(true);
-    try { await analyzeCode(activeTab.content); }
+    try { await improveActiveTab(); }
     finally { setImproveLoading(false); }
   };
 
@@ -181,8 +258,8 @@ export const EditorContainer: React.FC = () => {
         <div className="flex-1" />
         <div className="flex items-center gap-1.5">
           <AIBtn icon="description"      label="Documentation" dark  title="Generate full project docs" shortcut="Ctrl+D" loading={docLoading}     onClick={handleDoc} />
-          <AIBtn icon="auto_awesome"     label="Improve"             title="Analyze & improve"          shortcut="Ctrl+I" loading={improveLoading} onClick={handleImprove} />
-          <AIBtn icon="medical_services" label="Bug Fix"             title="AI bug fix"                 shortcut="Ctrl+B" loading={bugLoading}     onClick={handleBugFix} />
+          <AIBtn icon="auto_awesome"     label="Improve"             title="Analyze & improve"          shortcut="Ctrl+I" loading={improveLoading} onClick={handleImprove} hasSelection={selectionInfo.hasSelection} selectionPreview={selectionInfo.preview} />
+          <AIBtn icon="medical_services" label="Bug Fix"             title="AI bug fix"                 shortcut="Ctrl+B" loading={bugLoading}     onClick={handleBugFix} hasSelection={selectionInfo.hasSelection} selectionPreview={selectionInfo.preview} />
           <AIBtn icon="account_tree"     label="Flow"                title="Code flow diagram"                                                     onClick={handleFlow} />
           <div className="w-px h-4 bg-gray-200 mx-0.5" />
           <AIBtn icon="history"          label="History"             title="Local file history"         active={state.historyPanelVisible}           onClick={handleHistory} />
@@ -212,15 +289,15 @@ export const EditorContainer: React.FC = () => {
 
         <div
           style={{
-            width: (state.browserVisible || state.chatVisible || state.historyPanelVisible) ? rightPanelWidth : 0,
+            width: (state.browserVisible || state.chatVisible || state.historyPanelVisible || emulatorVisible || actionsVisible) ? rightPanelWidth : 0,
             flexShrink: 0,
             minHeight: 0,
             position: 'relative',
             overflow: 'hidden',
-            transition: 'width 180ms ease',
+            transition: isDraggingResizer ? 'none' : 'width 180ms ease',
           }}
         >
-          {(state.browserVisible || state.chatVisible || state.historyPanelVisible) && (
+          {(state.browserVisible || state.chatVisible || state.historyPanelVisible || emulatorVisible || actionsVisible) && (
             <div
               ref={resizerRef}
               style={{
@@ -247,6 +324,20 @@ export const EditorContainer: React.FC = () => {
 
           <div style={{ height: '100%', display: state.historyPanelVisible ? 'flex' : 'none', flexDirection: 'column' }}>
             <LocalHistoryPanel onClose={() => dispatch({ type: 'TOGGLE_HISTORY_PANEL' })} />
+          </div>
+
+          <div style={{ height: '100%', display: emulatorVisible ? 'flex' : 'none', flexDirection: 'column' }}>
+            <AndroidEmulatorPanel
+              visible={emulatorVisible}
+              onClose={() => setEmulatorVisible(false)}
+            />
+          </div>
+
+          <div style={{ height: '100%', display: actionsVisible ? 'flex' : 'none', flexDirection: 'column' }}>
+            <CustomActionsPanel
+              projectRoot={state.projectRoot}
+              onClose={() => setActionsVisible(false)}
+            />
           </div>
         </div>
       </div>

@@ -14,7 +14,7 @@ class OllamaWorker(QThread):
     response_received = Signal(str)
     error_occurred = Signal(str)
     
-    def __init__(self, prompt, model_name="qwen2.5-coder:3b"):
+    def __init__(self, prompt, model_name="qwen2.5-coder:7b"):
         super().__init__()
         self.prompt = prompt
         self.model_name = model_name

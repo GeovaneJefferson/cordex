@@ -1,5 +1,7 @@
 import React from 'react';
 import { useAppState } from '../store/AppContext';
+import { themes } from '../themes';
+import { useTheme } from '../hooks/useTheme';
 
 type Panel = 'explorer' | 'search' | 'git' | 'extensions';
 
@@ -15,6 +17,29 @@ const NavBtn: React.FC<{ icon: string; title: string; active?: boolean; onClick?
 
 export const LeftNav: React.FC = () => {
   const { state, dispatch } = useAppState();
+  const { currentThemeId, setTheme } = useTheme();
+  const [emulatorActive, setEmulatorActive] = React.useState(false);
+  const [actionsActive,  setActionsActive]  = React.useState(false);
+
+  // Sync with EditorContainer's actual state
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      const panelState = (window as any).__cordexGetPanelState?.();
+      if (panelState) {
+        setEmulatorActive(panelState.emulatorVisible);
+        setActionsActive(panelState.actionsVisible);
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  const openEmulator = () => {
+    (window as any).__cordexOpenEmulator?.();
+  };
+
+  const openActions = () => {
+    (window as any).__cordexOpenActions?.();
+  };
 
   const handleNav = (panel: Panel) => {
     if (state.sidebarVisible && state.sidebarPanel === panel) {
@@ -43,11 +68,17 @@ export const LeftNav: React.FC = () => {
         <NavBtn icon="account_tree" title="Source Control" active={isActive('git')}        onClick={() => handleNav('git')} />
         <NavBtn icon="terminal"     title="Toggle Terminal" active={state.terminalVisible} onClick={() => dispatch({ type: 'TOGGLE_TERMINAL' })} />
         <NavBtn icon="extension"    title="Extensions"     active={isActive('extensions')} onClick={() => handleNav('extensions')} />
+        <NavBtn icon="android"      title="Android Emulator" active={emulatorActive}         onClick={openEmulator} />
+        <NavBtn icon="bolt"         title="Custom Actions"   active={actionsActive}          onClick={openActions} />
       </div>
 
       {/* Bottom */}
       <div className="flex flex-col items-center gap-1 px-1.5 mb-1">
-        <NavBtn icon="brush"    title="Theme" />
+        <NavBtn
+          icon="brush"
+          title={`Settings: ${themes.find(t => t.id === currentThemeId)?.name || 'Theme'}`}
+          onClick={() => dispatch({ type: 'TOGGLE_AI_SETTINGS' })}
+        />
         <NavBtn icon="settings" title="AI Settings" onClick={() => dispatch({ type: 'TOGGLE_AI_SETTINGS' })} />
       </div>
     </nav>

@@ -1,7 +1,8 @@
 'use strict'
 
 /**
- * Ollama client — connects to Ollama on :11434 (replaces llama-server :8080).
+ * Ollama client — /api/chat (native message array endpoint).
+ * Context window: 16384 tokens to prevent large-codebase context drops.
  */
 
 const OLLAMA_BASE = 'http://127.0.0.1:11434'
@@ -25,21 +26,26 @@ function resetBackendCache() {
   _online = null
 }
 
-async function llamaGenerate({
+/**
+ * ollamaChat — sends a native messages array to /api/chat.
+ * @param {object} opts
+ * @param {string}   opts.model
+ * @param {Array}    opts.messages  - [{ role: 'system'|'user'|'assistant', content: string }]
+ * @param {boolean}  opts.stream
+ * @param {AbortSignal} opts.signal
+ * @param {number}   opts.temperature
+ * @param {number}   opts.num_predict
+ */
+async function ollamaChat({
   model,
-  prompt,
+  messages = [],
   stream = false,
   signal,
   temperature,
   num_predict = 1024,
-  systemPrompt,
 } = {}) {
   const online = await resolveBackend()
   if (!online) throw new Error('Ollama is not running. Start it with: ollama serve')
-
-  const messages = []
-  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt })
-  messages.push({ role: 'user', content: prompt })
 
   return fetch(`${OLLAMA_BASE}/api/chat`, {
     method: 'POST',
@@ -52,9 +58,30 @@ async function llamaGenerate({
       options: {
         temperature: temperature ?? 0.1,
         num_predict,
+        num_ctx: 16384,   // expanded context window — prevents large codebase drops
       },
     }),
   })
+}
+
+/**
+ * llamaGenerate — legacy shim: wraps a single prompt string into ollamaChat.
+ * Kept for backward compatibility with other handlers (aiHandler, aiRouter, etc.).
+ */
+async function llamaGenerate({
+  model,
+  prompt,
+  stream = false,
+  signal,
+  temperature,
+  num_predict = 1024,
+  systemPrompt,
+} = {}) {
+  const messages = []
+  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt })
+  messages.push({ role: 'user', content: prompt })
+
+  return ollamaChat({ model, messages, stream, signal, temperature, num_predict })
 }
 
 async function extractText(res) {
@@ -101,4 +128,12 @@ async function pingBackend() {
   }
 }
 
-module.exports = { llamaGenerate, extractText, streamText, pingBackend, resolveBackend, resetBackendCache }
+module.exports = {
+  ollamaChat,
+  llamaGenerate,   // legacy compat
+  extractText,
+  streamText,
+  pingBackend,
+  resolveBackend,
+  resetBackendCache,
+}

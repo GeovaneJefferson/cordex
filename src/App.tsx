@@ -8,6 +8,7 @@ import { FileContextMenu } from './components/FileContextMenu';
 import { BugFixModal } from './components/BugFixModal';
 import { AISettingsModal } from './components/AISettingsModal';
 import { fsService } from './services/fsService';
+import { useTheme } from './hooks/useTheme';
 
 // ── GlobalShortcuts ─────────────────────────────────────────────────────────
 // PERF FIX: previously depended on [state, dispatch] causing the listener to
@@ -33,7 +34,7 @@ const GlobalShortcuts: React.FC = () => {
         dispatch({ type: 'SET_PROJECT', root: lastProject, tree: result.tree });
 
         // 🔥 Fire-and-forget embedding index – runs only once after startup restore
-        (window as any).Cordex?.ai?.embedProject?.({ projectRoot: lastProject })
+        (window as any).Cordex?.ai?.embedProject?.(lastProject)
           .catch((err: any) => console.warn('Startup embedding index failed:', err));
       } else {
         localStorage.removeItem('cordex_last_project'); // stale folder
@@ -94,9 +95,11 @@ const GlobalShortcuts: React.FC = () => {
       }
 
       // Search (Ctrl+Shift+F)
-      if (e.shiftKey && e.key === 'F') {
+      if (e.shiftKey && (e.key === 'F' || e.key === 'f')) {
         e.preventDefault(); e.stopPropagation();
         dispatch({ type: 'SET_SIDEBAR_PANEL', panel: 'search' });
+        // Emit event so SearchPanel can re-focus the input even if already mounted
+        setTimeout(() => window.dispatchEvent(new CustomEvent('cordex:focus-search')), 50);
         return;
       }
 
@@ -220,25 +223,39 @@ const GlobalShortcuts: React.FC = () => {
 const ResizableSidebar: React.FC = () => {
   const { state } = useAppState();
   const [sidebarWidth, setSidebarWidth] = React.useState(260);
+  const sidebarWidthRef = React.useRef(sidebarWidth);
   const resizerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
 
   React.useEffect(() => {
     const el = resizerRef.current;
     if (!el) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       e.preventDefault();
-      const startX = e.clientX, startW = sidebarWidth;
-      const onMove = (mv: MouseEvent) => {
+      const startX = e.clientX;
+      const startW = sidebarWidthRef.current;
+      const onMove = (mv: PointerEvent) => {
         const w = Math.min(480, Math.max(160, startW + mv.clientX - startX));
         setSidebarWidth(w);
       };
-      const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+      };
+      el.setPointerCapture?.(e.pointerId);
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
     };
-    el.addEventListener('mousedown', onDown);
-    return () => el.removeEventListener('mousedown', onDown);
-  }, [sidebarWidth]);
+    el.addEventListener('pointerdown', onDown);
+    return () => el.removeEventListener('pointerdown', onDown);
+  }, [state.sidebarVisible]);
 
   return (
     <div style={{ display: 'flex', position: 'relative', flexShrink: 0 }}>
@@ -265,18 +282,28 @@ const ResizableSidebar: React.FC = () => {
   );
 };
 
+const AppInner: React.FC = () => {
+  useTheme();
+
+  return (
+    <>
+      <GlobalShortcuts />
+      <div className="flex h-screen w-screen overflow-hidden pb-[22px]">
+        <LeftNav />
+        <ResizableSidebar />
+        <EditorContainer />
+      </div>
+      <StatusBar />
+      <FileContextMenu />
+      <BugFixModal />
+      <AISettingsModal />
+    </>
+  );
+};
+
 const App: React.FC = () => (
   <AppProvider>
-    <GlobalShortcuts />
-    <div className="flex h-screen w-screen overflow-hidden pb-[22px]">
-      <LeftNav />
-      <ResizableSidebar />
-      <EditorContainer />
-    </div>
-    <StatusBar />
-    <FileContextMenu />
-    <BugFixModal />
-    <AISettingsModal />
+    <AppInner />
   </AppProvider>
 );
 

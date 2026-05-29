@@ -1,6 +1,8 @@
 import React, { useEffect, useState, memo } from 'react';
 import { useAppState } from '../store/AppContext';
 import { HardwareBadge } from './HardwareBadge';
+import { themes } from '../themes';
+import { useTheme } from '../hooks/useTheme';
 
 const Cordex = (window as any).Cordex;
 
@@ -29,7 +31,9 @@ const LANG_LABELS: Record<string, string> = {
 
 export const StatusBar: React.FC = memo(() => {
   const { state, dispatch } = useAppState();
+  const { currentThemeId, setTheme } = useTheme();
   const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+  const currentTheme = themes.find(t => t.id === currentThemeId);
   const isDirty = activeTab?.isDirty ?? false;
   const lang = activeTab?.language ?? '';
   const langLabel = LANG_LABELS[lang] ?? lang;
@@ -78,8 +82,14 @@ return (
   )}
 
   <Chip icon="error_outline" text="0" color="text-gray-400" title="Errors" />
-  <Chip icon="warning_amber"  text="0" color="text-gray-400" title="Warnings" />
-
+  <Chip icon="warning_amber"  text="0" color="text-gray-400" title="Warnings" />  <Chip icon="palette" text={currentTheme?.name || 'Theme'} color="text-gray-400"
+    title={`Current theme: ${currentTheme?.name || 'Theme'}. Click to cycle themes.`}
+    onClick={() => {
+      const currentIndex = themes.findIndex(t => t.id === currentThemeId);
+      const nextTheme = themes[(currentIndex + 1) % themes.length];
+      setTheme(nextTheme.id);
+    }}
+  />
   <div className="w-px h-3 bg-gray-300 mx-1 flex-shrink-0" />
   <HardwareBadge />
   <div className="w-px h-3 bg-gray-300 mx-1 flex-shrink-0" />

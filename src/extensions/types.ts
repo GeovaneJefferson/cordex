@@ -27,6 +27,10 @@ export interface Extension {
   capabilities: ExtensionCapability[];
   installNote?: string;
   configSchema?: Record<string, ExtensionConfigField>;
+  /** If set, installing & enabling this extension opens a panel in the right pane */
+  panelType?: 'android-emulator';
+  /** Shell commands to run on install (shown in terminal) */
+  installCommands?: string[];
 }
 
 export type ExtensionCategory = 'language' | 'formatter' | 'linter' | 'ai' | 'theme' | 'tool';

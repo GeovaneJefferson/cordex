@@ -123,12 +123,24 @@ const MessageBubble: React.FC<{
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
+            p({ children }) {
+              return <p style={{ marginBottom: '0.6em', marginTop: 0, lineHeight: 1.55 }}>{children}</p>;
+            },
+            ul({ children }) {
+              return <ul style={{ paddingLeft: '1.2em', marginBottom: '0.6em', marginTop: 0 }}>{children}</ul>;
+            },
+            ol({ children }) {
+              return <ol style={{ paddingLeft: '1.2em', marginBottom: '0.6em', marginTop: 0 }}>{children}</ol>;
+            },
+            li({ children }) {
+              return <li style={{ marginBottom: '0.2em' }}>{children}</li>;
+            },
             code({ node, className, children, ...rest }) {
               const match = /language-(\w+)/.exec(className || '');
               const codeString = String(children).replace(/\n$/, '');
               const isInline = !match && !className;
               return isInline ? (
-                <code className={className}>{children}</code>
+                <code className={className} style={{ background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, fontSize: '0.9em' }}>{children}</code>
               ) : (
                 <CodeBlock language={match?.[1] ?? 'text'} code={codeString} />
               );
@@ -153,11 +165,21 @@ export const ChatPanel: React.FC = () => {
   const abortRef = useRef<() => void>(() => {});
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [selectionInfo, setSelectionInfo] = useState<{ hasSelection: boolean; preview: string; lineCount: number }>({ hasSelection: false, preview: '', lineCount: 0 });
 
   // Mention state
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionIndex, setMentionIndex] = useState(0);
   const [showMentions, setShowMentions] = useState(false);
+
+  // Poll for selection changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const info = (window as any).__cordexGetSelectionInfo?.();
+      if (info) setSelectionInfo(info);
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
 
   // Cached file list (updated only when fileTree changes)
   const allFiles = useRef<string[]>([]);
@@ -212,9 +234,11 @@ export const ChatPanel: React.FC = () => {
     setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
     const currentFile = state.tabs.find(t => t.id === state.activeTabId)?.path;
+    const selection = (window as any).__cordexGetSelection?.();
     const context = {
       projectRoot: state.projectRoot,
       currentFile,
+      selection: selection || undefined,
     };
 
     // Clear previous buffer
@@ -362,6 +386,15 @@ export const ChatPanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-white">
+      {/* Selection indicator header */}
+      {selectionInfo.hasSelection && (
+        <div className="px-4 py-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-xs">
+          <span className="material-symbols-outlined text-green-600 text-[14px]">check_circle</span>
+          <span className="text-green-700 font-medium">
+            Selection active: {selectionInfo.lineCount} {selectionInfo.lineCount === 1 ? 'line' : 'lines'} • {selectionInfo.preview}
+          </span>
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.map((msg, i) => (
           <MessageBubble

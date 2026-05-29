@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useRef } from 
 import { initialState, reducer } from './reducer';
 import type { AppState, AppAction } from '../types';
 import { detectLanguage } from '../utils/fileIcons';
+import { settingsService } from '../services';
 
 const AppContext = createContext<{
   state: AppState;
@@ -20,7 +21,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (hw) dispatch({ type: 'SET_HARDWARE', hw });
     });
 
-    // Restore last session
+    // Restore app settings and last session
+    (async () => {
+      try {
+        const storedSettings = await settingsService.get?.();
+        if (storedSettings && typeof storedSettings === 'object') {
+          dispatch({ type: 'SET_SETTINGS', settings: storedSettings });
+        }
+      } catch {
+        // ignore if settings are unavailable
+      }
+    })();
+
     Cordex?.session?.load?.()?.then((session: any) => {
       if (!session) return;
       if (session.aiSettings) dispatch({ type: 'SET_AI_SETTINGS', settings: session.aiSettings });

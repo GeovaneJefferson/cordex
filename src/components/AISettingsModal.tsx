@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAppState } from '../store/AppContext';
 import { AISettings } from '../types';
+import { themes } from '../themes';
+import { useTheme } from '../hooks/useTheme';
 
 const Cordex = (window as any).Cordex;
 
@@ -29,13 +31,16 @@ interface ModelInfo { name: string; sizeLabel: string }
 // ══════════════════════════════════════════════════════════════════════
 const AISettingsInner: React.FC = () => {
   const { state, dispatch } = useAppState();
+  const { currentThemeId, setTheme } = useTheme();
 
-  const [refreshing,   setRefreshing]   = useState(false);
+  const [activeTab, setActiveTab] = useState<'ai' | 'theme'>('ai');
+  const [refreshing, setRefreshing]   = useState(false);
   const [serverStatus, setServerStatus] = useState<'stopped'|'running'|'starting'>('stopped');
-  const [starting,     setStarting]     = useState(false);
-  const [models,       setModels]       = useState<ModelInfo[]>([]);
-  const [liteModel,    setLiteModel]    = useState('');
-  const [fullModel,    setFullModel]    = useState('');
+  const [starting, setStarting]     = useState(false);
+  const [models, setModels]         = useState<ModelInfo[]>([]);
+  const [liteModel, setLiteModel]   = useState('');
+  const [fullModel, setFullModel]   = useState('');
+  const [selectedTheme, setSelectedTheme] = useState(currentThemeId);
 
   const close = () => dispatch({ type: 'TOGGLE_AI_SETTINGS' });
 
@@ -66,9 +71,11 @@ const AISettingsInner: React.FC = () => {
       setLiteModel(v => v || state.aiSettings.autocomplete || smallest);
       setFullModel(v  => v || state.aiSettings.analyze     || largest);
     }
+    setSelectedTheme(currentThemeId);
   }, [state.aiSettings.autocomplete, state.aiSettings.analyze]);
 
   useEffect(() => { loadStatus(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSelectedTheme(currentThemeId); }, [currentThemeId]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -92,6 +99,7 @@ const AISettingsInner: React.FC = () => {
     LITE_FEATURES.forEach(k => { if (liteModel) settings[k] = liteModel; });
     FULL_FEATURES.forEach(k => { if (fullModel) settings[k] = fullModel; });
     dispatch({ type: 'SET_AI_SETTINGS', settings });
+    setTheme(selectedTheme);
 
     // Persist to disk so the models survive a restart
     try {
@@ -100,6 +108,7 @@ const AISettingsInner: React.FC = () => {
         ...current,
         autocompleteModel: liteModel || current.autocompleteModel,
         analysisModel:     fullModel  || current.analysisModel,
+        theme:             selectedTheme || current.theme,
       });
     } catch {}
 
@@ -142,35 +151,30 @@ const AISettingsInner: React.FC = () => {
     <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
     <div className="flex items-center gap-3">
     <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
-    <span className="material-symbols-outlined text-white text-[18px]">smart_toy</span>
+    <span className="material-symbols-outlined text-white text-[18px]">settings</span>
     </div>
     <div>
-    <h2 className="text-[13px] font-semibold text-gray-900">AI Model Settings</h2>
-    <div className="flex items-center gap-2 mt-0.5">
-    <span className={`w-1.5 h-1.5 rounded-full ${
-      ollamaRunning  ? 'bg-emerald-400' :
-      ollamaStarting ? 'bg-amber-400 animate-pulse' :
-      'bg-red-400'
-    }`} />
-    <span className="text-[11px] text-gray-500">
-    {ollamaRunning ? 'Ollama running' : ollamaStarting ? 'Checking…' : 'Ollama offline'}
-    </span>
-    <button
-    onClick={refresh}
-    disabled={refreshing}
-    title="Refresh model list"
-    className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
-    >
-    <span className={`material-symbols-outlined text-[13px] ${refreshing ? 'animate-spin' : ''}`}>
-    refresh
-    </span>
-    </button>
+    <h2 className="text-[13px] font-semibold text-gray-900">Settings</h2>
+    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-gray-500">
+    <span>{ollamaRunning ? 'Ollama running' : ollamaStarting ? 'Checking…' : 'Ollama offline'}</span>
     </div>
     </div>
     </div>
     <button onClick={close} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
     <span className="material-symbols-outlined text-[18px]">close</span>
     </button>
+    </div>
+    <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex gap-2">
+      <button
+        type="button"
+        onClick={() => setActiveTab('ai')}
+        className={`text-[11px] px-3 py-1.5 rounded-lg transition ${activeTab === 'ai' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900 hover:bg-white/80'}`}
+      >AI</button>
+      <button
+        type="button"
+        onClick={() => setActiveTab('theme')}
+        className={`text-[11px] px-3 py-1.5 rounded-lg transition ${activeTab === 'theme' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900 hover:bg-white/80'}`}
+      >Themes</button>
     </div>
 
     {/* ── Status bar ───────────────────────────────────────────── */}
@@ -207,7 +211,34 @@ const AISettingsInner: React.FC = () => {
     {/* ── Model assignment ─────────────────────────────────────── */}
     <div className="px-5 py-4 space-y-5 overflow-y-auto flex-1">
 
-    {/* No models hint */}
+    {activeTab === 'theme' ? (
+      <div className="px-5 py-4 space-y-5 overflow-y-auto flex-1">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+              Theme
+            </span>
+            <span className="text-[12px] font-semibold text-gray-800">Editor + UI</span>
+            <span className="text-[11px] text-gray-400">— choose your app theme</span>
+          </div>
+          <p className="text-[10px] text-gray-400">
+            Switch the Monaco editor theme and the app shell appearance from a single settings panel.
+          </p>
+          <select
+            value={selectedTheme}
+            onChange={e => setSelectedTheme(e.target.value)}
+            className="w-full text-[11px] border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:border-orange-400 cursor-pointer transition-colors"
+          >
+            {themes.map(theme => (
+              <option key={theme.id} value={theme.id}>{theme.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+    ) : (
+      <div className="px-5 py-4 space-y-5 overflow-y-auto flex-1">
+
+      {/* No models hint */}
     {ollamaRunning && !hasModels && (
       <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-[11px] text-blue-700 leading-relaxed">
       No Ollama models found. Pull one first:
@@ -301,6 +332,7 @@ const AISettingsInner: React.FC = () => {
       </div>
     )}
     </div>
+    )}
 
     {/* ── Footer ───────────────────────────────────────────────── */}
     <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between flex-shrink-0">
@@ -329,5 +361,5 @@ const AISettingsInner: React.FC = () => {
       </div>
       </div>
       </div>
-  );
-};
+      </div>
+    );  };

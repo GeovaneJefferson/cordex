@@ -280,12 +280,8 @@ export const Sidebar: React.FC = () => {
   );
 
   return (
-    <aside style={{
-      width: state.sidebarVisible ? '260px' : '0px',
-      minWidth: state.sidebarVisible ? '260px' : '0px',
-      transition: 'width 220ms cubic-bezier(0.4,0,0.2,1), min-width 220ms cubic-bezier(0.4,0,0.2,1)',
-      overflow: 'hidden',
-    }} className="border-r border-gray-100 bg-white flex flex-col flex-shrink-0 z-10">
+    <aside style={{ width: '100%', minWidth: 0, overflow: 'hidden' }}
+      className="border-r border-gray-100 bg-white flex flex-col flex-shrink-0 z-10 h-full">
 
       {/* Explorer panel */}
       {state.sidebarPanel === 'explorer' && (
@@ -357,30 +353,24 @@ export const Sidebar: React.FC = () => {
         </>
       )}
 
-      {/* Search panel – scrollable */}
+      {/* Search panel */}
       {state.sidebarPanel === 'search' && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          <div className="flex-1 overflow-y-auto sidebar-scroll" style={{ minHeight: 0 }}>
-            <SearchPanel />
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <SearchPanel />
         </div>
       )}
 
-      {/* Git panel – scrollable */}
+      {/* Git panel */}
       {state.sidebarPanel === 'git' && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          <div className="flex-1 overflow-y-auto sidebar-scroll" style={{ minHeight: 0 }}>
-            <GitPanel />
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <GitPanel />
         </div>
       )}
 
-      {/* Extensions panel – scrollable */}
+      {/* Extensions panel */}
       {state.sidebarPanel === 'extensions' && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          <div className="flex-1 overflow-y-auto sidebar-scroll" style={{ minHeight: 0 }}>
-            <ExtensionPanel />
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <ExtensionPanel />
         </div>
       )}
     </aside>

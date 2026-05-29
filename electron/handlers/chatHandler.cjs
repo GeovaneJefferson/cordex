@@ -4,7 +4,7 @@ const { ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs-extra')
 const { loadSettings } = require('../utils/settings.cjs')
-const { llamaGenerate } = require('../utils/ollamaClient.cjs')
+const { ollamaChat } = require('../utils/ollamaClient.cjs')
 
 const EXCLUDE_PATTERNS = [
   '**/node_modules/**', '**/.venv/**', '**/env/**', '**/__pycache__/**',
@@ -13,6 +13,18 @@ const EXCLUDE_PATTERNS = [
 ]
 
 let currentController = null
+
+// ══════════════════════════════════════════════════════════════════
+//  Hardcoded system rules (injected into every request)
+// ══════════════════════════════════════════════════════════════════
+const SYSTEM_RULES = `You are a precision coding assistant. Rules:
+- Answer directly and concisely — no preamble, no summaries, no filler.
+- Never restate the question. Get to the point immediately.
+- When referencing code, cite specific line numbers (e.g. "line 42").
+- Do NOT provide code unless the user explicitly asks for it.
+- Keep responses short. Use bullet points only when listing multiple distinct items.
+- If asked to explain a file, give a 2-3 sentence summary of its purpose.
+- Separate distinct ideas with a blank line between paragraphs.`
 
 module.exports = function(mainWindow) {
   ipcMain.on('ai:chatStream:start', async (event, { messages, context }) => {
@@ -25,44 +37,50 @@ module.exports = function(mainWindow) {
     const model = settings.chatModel || settings.analysisModel || settings.flowModel || 'qwen2.5-coder:7b'
 
     try {
-      // 1. Build base system prompt (project tree + current file info)
-      const systemPrompt = await buildChatContext(context.projectRoot, context.currentFile)
+      // 1. Build base context (project tree + current file info, or selection if provided)
+      const baseContext = await buildChatContext(context.projectRoot, context.currentFile, context.selection)
 
       // 2. Parse @mentions from the last user message
       const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
       let additionalContext = ''
-      let cleanedMessage = lastMsg?.content || ''
+      let cleanedUserContent = lastMsg?.content || ''
 
       if (lastMsg && lastMsg.role === 'user' && context.projectRoot) {
         const { mentions, cleaned } = parseMentions(lastMsg.content, context.projectRoot)
-        cleanedMessage = cleaned
+        cleanedUserContent = cleaned
         if (mentions.length > 0) {
           additionalContext = await buildMentionsContext(mentions, context.projectRoot)
         }
       }
 
-      const fullSystemPrompt = additionalContext
-        ? systemPrompt + '\n\n' + additionalContext
-        : systemPrompt
+      const fullSystemContent = additionalContext
+        ? baseContext + '\n\n' + additionalContext
+        : baseContext
 
-      // 3. Build conversation (last 6 messages, truncate long assistant replies)
-      const recent = messages.slice(-6)
-      const conversation = recent.map((m, i) => {
+      // 3. Build messages array for /api/chat
+      //    system → history (last 6) → cleaned user message
+      const ollamaMessages = [
+        { role: 'system', content: fullSystemContent },
+      ]
+
+      // Include up to 6 prior messages (excluding the last user message we handle separately)
+      const history = messages.slice(-7, -1)   // up to 6 before the last
+      for (const m of history) {
         let content = m.content
-        if (i === recent.length - 1 && m.role === 'user') {
-          content = cleanedMessage   // use cleaned message
+        // Truncate long assistant replies to keep context manageable
+        if (m.role === 'assistant' && content.length > 500) {
+          content = content.slice(0, 500) + '…'
         }
-        if (m.role === 'assistant' && content.length > 300) {
-          content = content.slice(0, 300) + '…'
-        }
-        return `${m.role === 'user' ? 'User' : 'Assistant'}: ${content}`
-      }).join('\n')
+        ollamaMessages.push({ role: m.role === 'user' ? 'user' : 'assistant', content })
+      }
 
-      const prompt = `${fullSystemPrompt}\n\nConversation:\n${conversation}\nAssistant:`
+      // Append the cleaned last user message
+      ollamaMessages.push({ role: 'user', content: cleanedUserContent })
 
-      const response = await llamaGenerate({
+      // 4. Stream from Ollama /api/chat
+      const response = await ollamaChat({
         model,
-        prompt,
+        messages: ollamaMessages,
         temperature: 0.1,
         num_predict: 2048,
         stream: true,
@@ -85,6 +103,7 @@ module.exports = function(mainWindow) {
             if (!line.trim()) continue
             try {
               const json = JSON.parse(line)
+              // /api/chat streams chunks in json.message.content
               if (json.message?.content) {
                 event.sender.send('ai:chatStream:chunk', json.message.content)
               }
@@ -128,31 +147,31 @@ module.exports = function(mainWindow) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  Context Builder (unchanged – project tree + current file)
+//  Context Builder — project tree + current file
 // ══════════════════════════════════════════════════════════════════
-async function buildChatContext(projectRoot, currentFile) {
-  let context = `You are a project‑aware coding assistant. Follow these rules strictly:
-- Answer the user's last question directly.
-- If the user asks "What files are in this project?" or similar, list the files from the PROJECT FILE TREE below. Do NOT guess or invent files.
-- Do NOT provide code unless the user explicitly asks for it.
-- Keep answers concise (1-3 sentences). No unnecessary examples.
-- If the user asks to explain a file, describe its purpose without reprinting the entire file.`
+async function buildChatContext(projectRoot, currentFile, selection) {
+  let context = SYSTEM_RULES
 
   if (projectRoot && fs.existsSync(projectRoot)) {
-    const projectName = path.basename(projectRoot)
     const fileTree = await getQuickFileTree(projectRoot, 4)
     context += `\n\nPROJECT FILE TREE:\n${fileTree}`
   } else {
     context += '\n\nNo project is currently open. Ask the user to open one if needed.'
   }
 
-  // (We keep the current file info, but it will be superseded if the user mentions it)
-  if (currentFile && fs.existsSync(currentFile)) {
+  // If selection is provided, use it instead of full file
+  if (selection) {
+    const relativePath = projectRoot ? path.relative(projectRoot, currentFile) : path.basename(currentFile)
+    context += `\n\nSELECTED CODE from "${relativePath}":\n\`\`\`\n${selection.slice(0, 4000)}\n\`\`\``
+  } else if (currentFile && fs.existsSync(currentFile)) {
+    // Fallback: use full file if no selection
     const stat = fs.statSync(currentFile)
     if (stat.size < 100_000) {
       const content = await fs.readFile(currentFile, 'utf8')
       const relativePath = projectRoot ? path.relative(projectRoot, currentFile) : path.basename(currentFile)
-      context += `\n\nThe user has the file "${relativePath}" open. Content (first 2000 chars):\n\`\`\`\n${content.slice(0, 2000)}\n\`\`\``
+      // Number every line so AI can reference exact line numbers
+      const numbered = content.split('\n').map((l, i) => `${i + 1}: ${l}`).join('\n')
+      context += `\n\nACTIVE FILE "${relativePath}" (line-numbered):\n\`\`\`\n${numbered.slice(0, 6000)}\n\`\`\``
     }
   }
 
@@ -160,7 +179,7 @@ async function buildChatContext(projectRoot, currentFile) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  Mention parsing & resolution (NEW)
+//  Mention parsing & resolution
 // ══════════════════════════════════════════════════════════════════
 function parseMentions(message, projectRoot) {
   const mentionRegex = /@(\S+)/g
@@ -192,10 +211,12 @@ async function buildMentionsContext(mentions, projectRoot) {
       const relPath = path.relative(projectRoot, mention.resolvedPath)
       try {
         const stat = fs.statSync(mention.resolvedPath)
-        const maxSize = 100_000   // 100 KB – you can increase this if needed
+        const maxSize = 100_000
         const content = await fs.readFile(mention.resolvedPath, 'utf8')
-        const snippet = stat.size > maxSize ? content.slice(0, maxSize) + '\n... (file truncated)' : content
-        context += `\n--- Full content of "${relPath}" ---\n\`\`\`\n${snippet}\n\`\`\`\n`
+        const raw = stat.size > maxSize ? content.slice(0, maxSize) + '\n... (file truncated)' : content
+        // ── Line-number injection: every line is indexed so the model can target specifics ──
+        const numbered = raw.split('\n').map((l, i) => `${i + 1}: ${l}`).join('\n')
+        context += `\n--- Full content of "${relPath}" (line-numbered) ---\n\`\`\`\n${numbered}\n\`\`\`\n`
       } catch (err) {
         context += `\nCould not read file "${relPath}": ${err.message}\n`
       }
@@ -208,8 +229,8 @@ async function buildMentionsContext(mentions, projectRoot) {
     }
   }
   // Cap total additional context to avoid token overflow
-  if (context.length > 12000) {
-    context = context.slice(0, 12000) + '\n... (mention context truncated)'
+  if (context.length > 14000) {
+    context = context.slice(0, 14000) + '\n... (mention context truncated)'
   }
   return context
 }
@@ -228,7 +249,6 @@ async function buildAllProjectContext(projectRoot) {
       } catch {}
     }
   }
-  // Source file previews (first 30 lines, up to 100 files)
   const sourceFiles = await getSourceFiles(projectRoot)
   let snippetAcc = ''
   let fileCount = 0
@@ -243,7 +263,7 @@ async function buildAllProjectContext(projectRoot) {
     } catch {}
   }
   if (snippetAcc) ctx += `\nSource file previews (limited to 100 files):\n${snippetAcc}`
-  if (ctx.length > 12000) ctx = ctx.slice(0, 12000) + '\n... (@allproject summary truncated)'
+  if (ctx.length > 14000) ctx = ctx.slice(0, 14000) + '\n... (@allproject summary truncated)'
   return ctx
 }
 

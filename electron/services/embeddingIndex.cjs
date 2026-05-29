@@ -87,6 +87,7 @@ class EmbeddingIndex extends EventEmitter {
       }
     }
     await walk(projectRoot)
+    console.log('[embeddingIndex] discovered', result.length, 'files');
     return result
   }
 
@@ -94,6 +95,7 @@ class EmbeddingIndex extends EventEmitter {
     if (this._indexing) return { error: 'already indexing' }
     this._indexing = true
     this._abortFlag = false
+    console.log('[embeddingIndex] indexProject STARTED');
 
     const db = this._getDb()
     let indexed = 0, skipped = 0, errors = 0

@@ -11,10 +11,11 @@ export const initialState: AppState = {
   hardware: null,
   settings: { theme: 'atom-one-light' },
   analysisResult: '',
-  bugFixModal: { open: false, explanation: '', fixedCode: '', loading: false },
-  sidebarVisible: true,
+  bugFixModal: { open: false, explanation: '', fixedCode: '', loading: false, error: '' },
+  sidebarVisible: false,
   sidebarPanel: 'explorer',
   cursorLine: 1,
+  gotoLine: 0,
   cursorCol: 1,
   aiSettings: {
     autocomplete: '',
@@ -76,7 +77,23 @@ export function reducer(state: AppState, action: AppAction): AppState {
     case 'ADD_TAB': {
       const exists = state.tabs.find(t => t.id === action.tab.id);
       if (exists) return { ...state, activeTabId: action.tab.id };
-      return { ...state, tabs: [...state.tabs, action.tab], activeTabId: action.tab.id };
+      return { ...state, tabs: [...state.tabs, { ...action.tab, savedContent: action.tab.savedContent ?? action.tab.content }], activeTabId: action.tab.id };
+    }
+
+    case 'OPEN_FILE': {
+      const existing = state.tabs.find(t => t.path === action.payload.path);
+      if (existing) return { ...state, activeTabId: existing.id };
+      const newTab: Tab = {
+        id: action.payload.path,
+        path: action.payload.path,
+        name: action.payload.path.split('/').pop() ?? action.payload.path,
+        content: action.payload.content,
+        language: action.payload.language,
+        isDirty: false,
+        savedContent: action.payload.content,
+        tabType: 'file',
+      };
+      return { ...state, tabs: [...state.tabs, newTab], activeTabId: newTab.id };
     }
 
     case 'REMOVE_TAB': {
@@ -94,15 +111,28 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         tabs: state.tabs.map(t =>
-          t.id === action.id ? { ...t, content: action.content, isDirty: true } : t
+          t.id === action.id ? {
+            ...t,
+            content: action.content,
+            isDirty: action.content !== (t.savedContent ?? t.content),
+          } : t
         ),
       };
 
     case 'MARK_TAB_SAVED':
       return {
         ...state,
-        tabs: state.tabs.map(t => t.id === action.id ? { ...t, isDirty: false } : t),
+        tabs: state.tabs.map(t => t.id === action.id ? { ...t, isDirty: false, savedContent: t.content } : t),
       };
+    case 'REORDER_TABS': {
+      const srcIndex = state.tabs.findIndex(t => t.id === action.srcId);
+      const destIndex = state.tabs.findIndex(t => t.id === action.targetId);
+      if (srcIndex === -1 || destIndex === -1 || srcIndex === destIndex) return state;
+      const tabs = [...state.tabs];
+      const [moved] = tabs.splice(srcIndex, 1);
+      tabs.splice(destIndex, 0, moved);
+      return { ...state, tabs };
+    }
 
     case 'NEXT_TAB': {
       const idx = state.tabs.findIndex(t => t.id === state.activeTabId);
@@ -144,9 +174,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         bugFixModal: {
           open: true,
-          explanation: action.explanation || '',
-          fixedCode: action.fixedCode || '',
-          loading: !action.explanation,
+          explanation: '',
+          fixedCode: '',
+          loading: true,
+          error: '',
+          isSelection: action.isSelection ?? false,
+          selectionRange: action.selectionRange,
+          selectionText: action.selectionText,
         },
       };
 
@@ -156,8 +190,11 @@ export function reducer(state: AppState, action: AppAction): AppState {
     case 'SET_BUG_FIX_RESULT':
       return {
         ...state,
-        bugFixModal: { ...state.bugFixModal, loading: false, explanation: action.explanation, fixedCode: action.fixedCode },
+        bugFixModal: { ...state.bugFixModal, loading: false, error: '', explanation: action.explanation, fixedCode: action.fixedCode },
       };
+
+    case 'SET_BUG_FIX_ERROR':
+      return { ...state, bugFixModal: { ...state.bugFixModal, loading: false, error: action.error } };
 
     case 'CLOSE_BUG_FIX_MODAL':
       return { ...state, bugFixModal: { ...state.bugFixModal, open: false } };
@@ -172,6 +209,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
     // ─────────────────────── CURSOR ────────────────────────────────────
     case 'SET_CURSOR':
       return { ...state, cursorLine: action.line, cursorCol: action.col };
+
+    case 'GOTO_LINE':
+      return { ...state, gotoLine: action.line };
 
     // ─────────────────────── CONTEXT MENU ──────────────────────────────
     case 'SET_CONTEXT_MENU':

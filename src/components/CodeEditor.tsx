@@ -1,5 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as monaco from 'monaco-editor';
+import electronDts from '../electron.d.ts?raw';
+import typesDts from '../types/index.ts?raw';
 import { useAppState } from '../store/AppContext';
 import { themes } from '../themes';
 import { Tab } from '../types';
@@ -60,6 +62,19 @@ function ensureGDScript() {
     ],
   });
 }
+
+// ── Monaco marker → Problems tab bridge (singleton) ────────────────────────
+let _markerListenerReady = false;
+function setupMarkerListener() {
+  if (_markerListenerReady) return;
+  _markerListenerReady = true;
+  monaco.editor.onDidChangeMarkers((_uris) => {
+    const markers = monaco.editor.getModelMarkers({});
+    (window as any).__cordexMarkers = markers;
+    window.dispatchEvent(new CustomEvent('cordex:markers-changed', { detail: markers }));
+  });
+}
+
 ensureGDScript();
 
 // ── Local storage helpers ───────────────────────────────────────────────
@@ -84,7 +99,7 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
   const wrapperRef   = useRef<HTMLDivElement>(null);
   const editorRef    = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const ignoreRef    = useRef(false);
-  const themeRef     = useRef(storedTheme());
+  const themeRef     = useRef(state.settings?.theme || storedTheme());
   const fontRef      = useRef(storedFontSize());
 
   // For integer‑pixel layout fix
@@ -128,6 +143,22 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
     if (!containerRef.current || !tab) return;
 
     ensureThemes();
+    // Register project type declarations with Monaco so the in-browser
+    // TypeScript service recognises `CordexAPI`, `ElectronAPI`, `window.Cordex`, etc.
+    try {
+      const tsDefaults = (monaco.languages as any).typescript.typescriptDefaults;
+      tsDefaults.addExtraLib(electronDts, 'ts:electron.d.ts');
+      tsDefaults.addExtraLib(typesDts, 'ts:types/index.d.ts');
+      tsDefaults.setCompilerOptions({
+        target: monaco.languages.typescript.ScriptTarget.ES2020,
+        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+        jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
+        strict: true,
+        lib: ['es2022', 'dom'],
+      });
+    } catch (err) {
+      console.warn('Monaco TS defaults unavailable:', err);
+    }
 
     editorRef.current?.dispose();
     editorRef.current = null;
@@ -140,7 +171,7 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
       fontLigatures: false,            // helps with selection precision
       lineNumbers: 'on',
-      minimap: { enabled: false },
+      minimap: { enabled: true },
       scrollBeyondLastLine: false,
       automaticLayout: true,
       matchBrackets: 'never',          // avoid micro‑reflows while selecting
@@ -158,11 +189,11 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
         vertical: 'auto',
         horizontal: 'auto',
         useShadows: false,
-        verticalScrollbarSize: 6,
-        horizontalScrollbarSize: 6,
+        verticalScrollbarSize: 12,
+        horizontalScrollbarSize: 10,
       },
       dragAndDrop: false,
-      multiCursorModifier: 'ctrlCmd',
+      multiCursorModifier: 'alt',    // Use Alt for multi-cursor; Ctrl/Cmd+Click should go to definition
     });
 
     monaco.editor.setTheme(themeRef.current);
@@ -240,12 +271,47 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
       editor.getAction('editor.action.commentLine')?.run();
     });
 
+    setupMarkerListener();  // ensure Monaco markers flow to Problems tab
+
+    // Expose getSelection for ChatPanel to use
+    (window as any).__cordexGetSelection = () => {
+      const sel = editor.getSelection();
+      if (!sel || (sel.startLineNumber === sel.endLineNumber && sel.startColumn === sel.endColumn)) return null;
+      const model = editor.getModel();
+      if (!model) return null;
+      return model.getValueInRange(sel);
+    };
+
+    // Expose selection info including preview for visual feedback
+    (window as any).__cordexGetSelectionInfo = () => {
+      const sel = editor.getSelection();
+      const hasSelection = sel && !(sel.startLineNumber === sel.endLineNumber && sel.startColumn === sel.endColumn);
+      if (!hasSelection) return { hasSelection: false, preview: '', lineCount: 0, range: null };
+      const model = editor.getModel();
+      if (!model) return { hasSelection: false, preview: '', lineCount: 0, range: null };
+      const selectedText = model.getValueInRange(sel);
+      const lineCount = sel.endLineNumber - sel.startLineNumber + 1;
+      const preview = selectedText.split('\n')[0].slice(0, 60); // First line, max 60 chars
+      return {
+        hasSelection: true,
+        preview,
+        lineCount,
+        range: {
+          startLineNumber: sel.startLineNumber,
+          startColumn: sel.startColumn,
+          endLineNumber: sel.endLineNumber,
+          endColumn: sel.endColumn,
+        },
+      };
+    };
+
     return () => {
       s1.dispose();
       s2.dispose();
       editor.dispose();
       editorRef.current = null;
       (window as any).__activeEditor = null;
+      (window as any).__cordexGetSelection = null;
     };
   }, [tabId, tab?.language]);
 
@@ -278,6 +344,17 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
     editor.setScrollLeft(scrollLeft);
     ignoreRef.current = false;
   }, [tab?.content]);
+
+  // ── Jump to line from search panel ──────────────────────────────────────
+  useEffect(() => {
+    if (!state.gotoLine || !editorRef.current) return;
+    const editor = editorRef.current;
+    const line = state.gotoLine;
+    editor.revealLineInCenter(line);
+    editor.setPosition({ lineNumber: line, column: 1 });
+    editor.focus();
+    dispatch({ type: 'GOTO_LINE', line: 0 }); // clear so it doesn't re-trigger
+  }, [state.gotoLine]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Integer pixel dimensions ─────────────────────────────────────────
   const width  = wrapperSize.width  > 0 ? `${Math.floor(wrapperSize.width)}px`  : '100%';

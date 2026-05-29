@@ -13,6 +13,7 @@ export interface Tab {
   content: string;
   language: string;
   isDirty: boolean;
+  savedContent?: string;
   tabType?: 'file' | 'flow';   // 'untitled' is not allowed – untitled files are still 'file'
   flowSourceTabId?: string;
 }
@@ -40,11 +41,22 @@ export interface HardwareInfo {
   modelMap?: Record<string, string>;
 }
 
+export interface SelectionRange {
+  startLineNumber: number;
+  startColumn: number;
+  endLineNumber: number;
+  endColumn: number;
+}
+
 export interface BugFixModalState {
   open: boolean;
   explanation?: string;
   fixedCode?: string;
   loading: boolean;
+  error?: string;
+  isSelection?: boolean;
+  selectionRange?: SelectionRange;
+  selectionText?: string;
 }
 
 export interface AISettings {
@@ -69,6 +81,7 @@ export interface AppState {
   sidebarVisible: boolean;
   sidebarPanel: 'explorer' | 'search' | 'git' | 'extensions';
   cursorLine: number;
+  gotoLine: number;
   cursorCol: number;
   aiSettings: AISettings;
   aiSettingsOpen: boolean;
@@ -91,14 +104,17 @@ export type AppAction =
   | { type: 'SET_ACTIVE_TAB'; id: string }
   | { type: 'UPDATE_TAB_CONTENT'; id: string; content: string }
   | { type: 'MARK_TAB_SAVED'; id: string }
+  | { type: 'REORDER_TABS'; srcId: string; targetId: string }
   | { type: 'TOGGLE_TERMINAL' }
   | { type: 'SET_HARDWARE'; hw: HardwareInfo }
   | { type: 'SET_SETTINGS'; settings: Record<string, any> }
   | { type: 'SET_ANALYSIS'; text: string }
   | { type: 'SET_CURSOR'; line: number; col: number }
-  | { type: 'OPEN_BUG_FIX_MODAL'; explanation?: string; fixedCode?: string }
+  | { type: 'GOTO_LINE'; line: number }
+  | { type: 'OPEN_BUG_FIX_MODAL'; explanation?: string; fixedCode?: string; isSelection?: boolean; selectionRange?: SelectionRange; selectionText?: string }
   | { type: 'SET_BUG_FIX_LOADING'; loading: boolean }
   | { type: 'SET_BUG_FIX_RESULT'; explanation: string; fixedCode: string }
+  | { type: 'SET_BUG_FIX_ERROR'; error: string }
   | { type: 'CLOSE_BUG_FIX_MODAL' }
   | { type: 'TOGGLE_AI_SETTINGS' }
   | { type: 'SET_AI_SETTINGS'; settings: Partial<AISettings> }

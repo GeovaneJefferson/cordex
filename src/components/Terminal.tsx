@@ -111,8 +111,8 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <div
         ref={containerRef}
-        className="w-full h-full overflow-hidden bg-white"
-        style={{ padding: '4px 8px' }}
+        className="w-full h-full overflow-hidden"
+        style={{ padding: '4px 8px', backgroundColor: 'var(--bg-app)' }}
       />
       {contextMenu.visible && (
         <div
@@ -122,7 +122,8 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
             top: contextMenu.y,
             zIndex: 100,
           }}
-          className="bg-white border border-gray-200 rounded shadow-lg py-1 text-xs"
+          className="border border-gray-200 rounded shadow-lg py-1 text-xs"
+          style={{ backgroundColor: 'var(--bg-app)', color: 'var(--text-secondary)' }}
         >
           <button
             onClick={() => {

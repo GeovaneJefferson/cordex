@@ -1,6 +1,28 @@
 import type * as monaco from 'monaco-editor';
 
-const theme: monaco.editor.IStandaloneThemeData = {
+export const name = 'Atom One Dark';
+export const cssVars = {
+  '--bg-app': '#282C34',
+  '--bg-elevated': '#2C313A',
+  '--bg-subtle': '#2C313A',
+  '--bg-muted': '#3E4451',
+  '--bg-strong': '#4B5263',
+  '--text-primary': '#D7DAE0',
+  '--text-secondary': '#ABB2BF',
+  '--text-tertiary': '#9DA5B4',
+  '--text-muted': '#6B7280',
+  '--text-faint': '#4B5263',
+  '--border-subtle': '#2C313A',
+  '--border-default': '#3E4451',
+  '--border-strong': '#4B5263',
+  '--scrollbar-thumb': '#3E4451',
+  '--scrollbar-hover': '#4B5263',
+  '--statusbar-bg': '#282C34',
+  '--statusbar-border': '#2C313A',
+  '--tabbar-bg': '#282C34',
+};
+
+export const data: monaco.editor.IStandaloneThemeData = {
   base: 'vs-dark',
   inherit: true,
   rules: [
@@ -25,5 +47,12 @@ const theme: monaco.editor.IStandaloneThemeData = {
     'editor.inactiveSelectionBackground': '#3E4451',
   },
 };
+
+const theme = {
+  id: 'atom-one-dark',
+  name,
+  cssVars,
+  data,
+} as const;
 
 export default theme;

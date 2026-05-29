@@ -12,7 +12,7 @@ const Chip: React.FC<{
 }> = ({ icon, text, color = 'text-gray-400', title, onClick, pulse, dotColor }) => (
   <button title={title} onClick={onClick}
   className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] transition-colors duration-100
-    ${onClick ? 'hover:bg-white/40 cursor-pointer' : 'cursor-default pointer-events-none'} ${color}`}>
+    ${onClick ? 'hover:bg-gray-100 cursor-pointer' : 'cursor-default pointer-events-none'} ${color}`}>
     {dotColor && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mr-0.5 ${dotColor} ${pulse ? 'animate-pulse' : ''}`} />}
     {icon && <span className="material-symbols-outlined text-[12px]">{icon}</span>}
     <span>{text}</span>
@@ -60,7 +60,10 @@ export const StatusBar: React.FC = memo(() => {
   const llamaError    = state.llamaStatus === 'error';
 
 return (
-  <div className="fixed bottom-0 left-0 right-0 h-[22px] bg-[#F0F0F0] border-t border-[#DCDCDC] flex items-center select-none z-50 text-[10px]">
+  <div
+    className="fixed bottom-0 left-0 right-0 h-[22px] flex items-center select-none z-50 text-[10px]"
+    style={{ background: 'var(--statusbar-bg)', borderTop: '1px solid var(--statusbar-border)' }}
+  >
   {/* Left */}
   <div className="flex items-center pl-1 gap-0 flex-1 min-w-0 overflow-hidden">
   <Chip

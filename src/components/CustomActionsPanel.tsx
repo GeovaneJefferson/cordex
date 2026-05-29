@@ -62,26 +62,26 @@ const ConfirmDialog: React.FC<{
         display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onCancel(); }}
     >
-      <div style={{ background: 'white', borderRadius: 10, padding: 24, maxWidth: 420, width: '90%',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.3)', border: '1px solid #e2e8f0' }}>
+      <div style={{ background: 'var(--bg-app)', borderRadius: 10, padding: 24, maxWidth: 420, width: '90%',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)', border: '1px solid var(--border-default)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <span className="material-symbols-outlined" style={{ fontSize: 22, color: color.active }}>
             {action.icon}
           </span>
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{action.label}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{action.label}</span>
         </div>
-        <p style={{ fontSize: 13, color: '#475569', marginBottom: 10, lineHeight: 1.5 }}>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10, lineHeight: 1.5 }}>
           Run this command in a new terminal tab?
         </p>
-        <div style={{ background: '#f8fafc', borderRadius: 6, padding: '8px 12px', fontFamily: 'monospace',
-          fontSize: 11, color: '#374151', wordBreak: 'break-all', lineHeight: 1.6, marginBottom: 20,
-          border: '1px solid #e2e8f0' }}>
+        <div style={{ background: 'var(--bg-elevated)', borderRadius: 6, padding: '8px 12px', fontFamily: 'monospace',
+          fontSize: 11, color: 'var(--text-primary)', wordBreak: 'break-all', lineHeight: 1.6, marginBottom: 20,
+          border: '1px solid var(--border-default)' }}>
           {action.command}
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel}
-            style={{ padding: '7px 18px', borderRadius: 6, border: '1px solid #e2e8f0',
-              background: 'white', color: '#374151', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
+            style={{ padding: '7px 18px', borderRadius: 6, border: '1px solid var(--border-default)',
+              background: 'var(--bg-elevated)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
             Cancel
           </button>
           <button onClick={onConfirm}
@@ -107,66 +107,66 @@ const ActionEditor: React.FC<{
   const canSave = !!(action.label?.trim()) && !!(action.command?.trim());
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 12,
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12,
         textTransform: 'uppercase', letterSpacing: '0.4px' }}>
         {isNew ? 'New Action' : 'Edit Action'}
       </div>
 
       <div style={{ marginBottom: 8 }}>
-        <label style={{ fontSize: 10, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>Label</label>
+        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 3 }}>Label</label>
         <input value={action.label ?? ''} onChange={e => onChange({ ...action, label: e.target.value })}
           placeholder="Deploy Production DK"
-          style={{ width: '100%', fontSize: 12, padding: '6px 8px', border: '1px solid #e2e8f0',
-            borderRadius: 5, outline: 'none', boxSizing: 'border-box' }} />
+          style={{ width: '100%', fontSize: 12, padding: '6px 8px', border: '1px solid var(--border-default)',
+            background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderRadius: 5, outline: 'none', boxSizing: 'border-box' }} />
       </div>
 
       <div style={{ marginBottom: 8 }}>
-        <label style={{ fontSize: 10, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>Command</label>
+        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 3 }}>Command</label>
         <textarea value={action.command ?? ''} onChange={e => onChange({ ...action, command: e.target.value })}
           placeholder={'EXPO_PUBLIC_LANG=da npx eas update --branch production-da --message "Updates"'}
           rows={3}
-          style={{ width: '100%', fontSize: 11, padding: '6px 8px', border: '1px solid #e2e8f0',
-            borderRadius: 5, outline: 'none', resize: 'vertical', fontFamily: 'monospace',
+          style={{ width: '100%', fontSize: 11, padding: '6px 8px', border: '1px solid var(--border-default)',
+            background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderRadius: 5, outline: 'none', resize: 'vertical', fontFamily: 'monospace',
             boxSizing: 'border-box', lineHeight: 1.5 }} />
       </div>
 
       <div style={{ marginBottom: 8 }}>
-        <label style={{ fontSize: 10, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>
+        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 3 }}>
           Description <span style={{ fontWeight: 400 }}>(optional)</span>
         </label>
         <input value={action.description ?? ''} onChange={e => onChange({ ...action, description: e.target.value })}
           placeholder="Short note about what this does"
-          style={{ width: '100%', fontSize: 12, padding: '6px 8px', border: '1px solid #e2e8f0',
-            borderRadius: 5, outline: 'none', boxSizing: 'border-box' }} />
+          style={{ width: '100%', fontSize: 12, padding: '6px 8px', border: '1px solid var(--border-default)',
+            background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderRadius: 5, outline: 'none', boxSizing: 'border-box' }} />
       </div>
 
       <div style={{ marginBottom: 10 }}>
-        <label style={{ fontSize: 10, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>
-          Working Dir <span style={{ fontWeight: 400, color: '#94a3b8' }}>(empty = project root)</span>
+        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 3 }}>
+          Working Dir <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(empty = project root)</span>
         </label>
         <input value={action.cwd ?? ''} onChange={e => onChange({ ...action, cwd: e.target.value })}
           placeholder="/absolute/path or relative"
-          style={{ width: '100%', fontSize: 11, padding: '6px 8px', border: '1px solid #e2e8f0',
-            borderRadius: 5, outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }} />
+          style={{ width: '100%', fontSize: 11, padding: '6px 8px', border: '1px solid var(--border-default)',
+            background: 'var(--bg-elevated)', color: 'var(--text-primary)', borderRadius: 5, outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }} />
       </div>
 
       <div style={{ marginBottom: 10 }}>
-        <label style={{ fontSize: 10, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 5 }}>Icon</label>
+        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 5 }}>Icon</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {ICON_OPTIONS.map(ic => (
             <button key={ic} onClick={() => onChange({ ...action, icon: ic })} title={ic}
               style={{ padding: '4px 5px', borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center',
-                border: action.icon === ic ? '2px solid #f97316' : '1px solid #e2e8f0',
-                background: action.icon === ic ? '#fff7ed' : 'white' }}>
+                border: action.icon === ic ? '2px solid #f97316' : '1px solid var(--border-default)',
+                background: action.icon === ic ? '#fff7ed' : 'var(--bg-elevated)' }}>
               <span className="material-symbols-outlined"
-                style={{ fontSize: 15, color: action.icon === ic ? '#f97316' : '#64748b' }}>{ic}</span>
+                style={{ fontSize: 15, color: action.icon === ic ? '#f97316' : 'var(--text-muted)' }}>{ic}</span>
             </button>
           ))}
         </div>
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <label style={{ fontSize: 10, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 5 }}>Color</label>
+        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 5 }}>Color</label>
         <div style={{ display: 'flex', gap: 7 }}>
           {COLOR_OPTIONS.map(c => (
             <button key={c.key} onClick={() => onChange({ ...action, color: c.key })}
@@ -179,7 +179,7 @@ const ActionEditor: React.FC<{
       </div>
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-        marginBottom: 16, userSelect: 'none', fontSize: 12, color: '#374151' }}>
+        marginBottom: 16, userSelect: 'none', fontSize: 12, color: 'var(--text-primary)' }}>
         <input type="checkbox" checked={action.confirm ?? true}
           onChange={e => onChange({ ...action, confirm: e.target.checked })}
           style={{ width: 14, height: 14, accentColor: selectedColor.active }} />
@@ -188,14 +188,14 @@ const ActionEditor: React.FC<{
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button onClick={onCancel}
-          style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #e2e8f0',
-            background: 'white', color: '#374151', cursor: 'pointer', fontSize: 12 }}>
+          style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border-default)',
+            background: 'var(--bg-elevated)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}>
           Cancel
         </button>
         <button onClick={onSave} disabled={!canSave}
           style={{ padding: '6px 18px', borderRadius: 6, border: 'none',
-            background: canSave ? selectedColor.active : '#e2e8f0',
-            color: canSave ? 'white' : '#94a3b8',
+            background: canSave ? selectedColor.active : 'var(--border-default)',
+            color: canSave ? 'white' : 'var(--text-muted)',
             cursor: canSave ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 700 }}>
           Save
         </button>
@@ -215,9 +215,9 @@ const EditModal: React.FC<{
     <div style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,0.35)',
       display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: 'white', borderRadius: 10, padding: 20, width: 440,
+      <div style={{ background: 'var(--bg-app)', borderRadius: 10, padding: 20, width: 440,
         maxHeight: '85vh', overflowY: 'auto',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0' }}>
+        boxShadow: '0 20px 60px rgba(0,0,0,0.25)', border: '1px solid var(--border-default)' }}>
         <ActionEditor
           action={draft}
           onChange={setDraft}
@@ -315,8 +315,7 @@ export const CustomActionsPanel: React.FC<CustomActionsPanelProps> = ({ projectR
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%',
-      background: 'white', fontSize: 12, position: 'relative' }}>
-
+      background: 'var(--bg-app)', fontSize: 12, position: 'relative' }}>
       {confirmAction && (
         <ConfirmDialog
           action={confirmAction}
@@ -334,13 +333,13 @@ export const CustomActionsPanel: React.FC<CustomActionsPanelProps> = ({ projectR
       )}
 
       {/* Header */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid #e2e8f0', flexShrink: 0,
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-default)', flexShrink: 0,
         display: 'flex', alignItems: 'center', gap: 6 }}>
         <span className="material-symbols-outlined" style={{ fontSize: 15, color: '#f97316' }}>bolt</span>
-        <span style={{ fontWeight: 700, fontSize: 11, color: '#0f172a', flex: 1,
+        <span style={{ fontWeight: 700, fontSize: 11, color: 'var(--text-primary)', flex: 1,
           textTransform: 'uppercase', letterSpacing: '0.5px' }}>Custom Actions</span>
         {projectRoot && (
-          <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 400, maxWidth: 100,
+          <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 400, maxWidth: 100,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             title={projectRoot}>
             {projectRoot.split('/').pop() ?? projectRoot.split('\\').pop()}
@@ -350,7 +349,7 @@ export const CustomActionsPanel: React.FC<CustomActionsPanelProps> = ({ projectR
           title="New action"
           style={{ padding: 3, borderRadius: 4, border: 'none', background: 'transparent',
             cursor: newDraft ? 'not-allowed' : 'pointer',
-            color: newDraft ? '#e2e8f0' : '#f97316', display: 'flex' }}>
+            color: newDraft ? 'var(--text-muted)' : '#f97316', display: 'flex' }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add_circle</span>
         </button>
         {/* Always show close button */}
@@ -358,7 +357,7 @@ export const CustomActionsPanel: React.FC<CustomActionsPanelProps> = ({ projectR
           onClick={onClose}
           title="Close"
           style={{ padding: 3, borderRadius: 4, border: 'none', background: 'transparent',
-            cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+            cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
           <span className="material-symbols-outlined" style={{ fontSize: 15 }}>close</span>
         </button>
       </div>
@@ -367,7 +366,7 @@ export const CustomActionsPanel: React.FC<CustomActionsPanelProps> = ({ projectR
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }} className="sidebar-scroll">
 
         {newDraft && (
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8,
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 8,
             padding: 14, marginBottom: 10 }}>
             <ActionEditor
               action={newDraft}
@@ -380,9 +379,9 @@ export const CustomActionsPanel: React.FC<CustomActionsPanelProps> = ({ projectR
         )}
 
         {actions.length === 0 && !newDraft && (
-          <div style={{ padding: '32px 0', textAlign: 'center', color: '#94a3b8', userSelect: 'none' }}>
+          <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-muted)', userSelect: 'none' }}>
             <span className="material-symbols-outlined"
-              style={{ fontSize: 36, display: 'block', marginBottom: 8, color: '#e2e8f0' }}>bolt</span>
+              style={{ fontSize: 36, display: 'block', marginBottom: 8, color: 'var(--border-default)' }}>bolt</span>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>No actions yet</div>
             <div style={{ fontSize: 11 }}>Press + to create one</div>
             {!projectRoot && (
@@ -414,11 +413,11 @@ export const CustomActionsPanel: React.FC<CustomActionsPanelProps> = ({ projectR
                   <div style={{ fontWeight: 700, fontSize: 12, color: color.text }}>
                     {action.label}
                     {action.confirm && (
-                      <span style={{ fontSize: 9, marginLeft: 5, color: '#94a3b8', fontWeight: 400 }}>⚠ confirm</span>
+                      <span style={{ fontSize: 9, marginLeft: 5, color: 'var(--text-muted)', fontWeight: 400 }}>⚠ confirm</span>
                     )}
                   </div>
                   {action.description && (
-                    <div style={{ fontSize: 10, color: '#64748b', whiteSpace: 'nowrap',
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap',
                       overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {action.description}
                     </div>
@@ -442,20 +441,20 @@ export const CustomActionsPanel: React.FC<CustomActionsPanelProps> = ({ projectR
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 4,
                 padding: '0 10px 8px', borderTop: `1px dashed ${color.border}` }}>
-                <code style={{ flex: 1, fontSize: 10, color: '#64748b', fontFamily: 'monospace',
+                <code style={{ flex: 1, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {action.command}
                 </code>
                 <button onClick={e => { e.stopPropagation(); setEditingAction(action); }}
                   title="Edit"
                   style={{ padding: '2px 4px', borderRadius: 3, border: 'none', background: 'transparent',
-                    cursor: 'pointer', color: '#94a3b8', display: 'flex', flexShrink: 0 }}>
+                    cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 13 }}>edit</span>
                 </button>
                 <button onClick={e => { e.stopPropagation(); deleteAction(action.id); }}
                   title="Delete"
                   style={{ padding: '2px 4px', borderRadius: 3, border: 'none', background: 'transparent',
-                    cursor: 'pointer', color: '#94a3b8', display: 'flex', flexShrink: 0 }}>
+                    cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 13 }}>delete</span>
                 </button>
               </div>

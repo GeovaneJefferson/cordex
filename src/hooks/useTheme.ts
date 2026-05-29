@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react';
-import * as monaco from 'monaco-editor';
+import type * as monaco from 'monaco-editor';
 import { useAppState } from '../store/AppContext';
-import { getTheme } from '../themes';
+import { getTheme, applyThemeCssVars } from '../themes';
 import { settingsService } from '../services';  // from barrel
 
 export function useTheme() {
@@ -12,9 +12,17 @@ export function useTheme() {
     const theme = getTheme(currentThemeId);
     if (!theme) return;
 
-    monaco.editor.defineTheme(theme.id, theme.data);
-    monaco.editor.setTheme(theme.id);
-    document.documentElement.dataset.theme = theme.id;
+    (async () => {
+      try {
+        const mon = await import('monaco-editor');
+        mon.editor.defineTheme(theme.id, theme.data);
+        mon.editor.setTheme(theme.id);
+      } catch (err) {
+        // Monaco not loaded yet — that's fine, CodeEditor will register themes when it loads
+      }
+      applyThemeCssVars(theme.cssVars);
+      document.documentElement.dataset.theme = theme.id;
+    })();
   }, [currentThemeId]);
 
   const setTheme = useCallback(async (themeId: string) => {

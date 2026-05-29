@@ -1,7 +1,6 @@
 import type * as monaco from 'monaco-editor';
-import { Theme } from './themeInterface'; // Adjust this path to wherever your interface is saved
 
-const cyberBridgeTheme: Theme = {
+const theme = {
   id: 'dark-protocol',
   name: 'Dark Protocol',
   uiClass: 'theme-dark-protocol',
@@ -59,7 +58,7 @@ const cyberBridgeTheme: Theme = {
       'input.border': '#242732',
       'focusBorder': '#05d671',
     },
-  },
+  } as monaco.editor.IStandaloneThemeData,
 };
 
-export default cyberBridgeTheme;
+export default theme;

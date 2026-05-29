@@ -121,9 +121,10 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
             left: contextMenu.x,
             top: contextMenu.y,
             zIndex: 100,
+            backgroundColor: 'var(--bg-app)',
+            color: 'var(--text-secondary)',
           }}
           className="border border-gray-200 rounded shadow-lg py-1 text-xs"
-          style={{ backgroundColor: 'var(--bg-app)', color: 'var(--text-secondary)' }}
         >
           <button
             onClick={() => {

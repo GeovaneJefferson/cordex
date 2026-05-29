@@ -41,7 +41,7 @@ const IconBtn: React.FC<{ icon: string; title: string; onClick: () => void; dang
     title={title}
     onClick={e => { e.stopPropagation(); onClick(); }}
     style={{ padding: '2px 4px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer',
-      color: danger ? '#ef4444' : '#64748b', display: 'flex', alignItems: 'center' }}
+      color: danger ? '#ef4444' : 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
     className={`opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100`}
   >
     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{icon}</span>
@@ -62,19 +62,19 @@ const Section: React.FC<SectionProps> = ({ title, count, open, onToggle, onStage
     <div
       onClick={onToggle}
       style={{ display: 'flex', alignItems: 'center', padding: '3px 10px 3px 6px',
-        cursor: 'pointer', userSelect: 'none', background: '#f8fafc',
-        borderTop: '1px solid #e2e8f0', borderBottom: open ? '1px solid #e2e8f0' : 'none' }}
+        cursor: 'pointer', userSelect: 'none', background: 'var(--bg-elevated)',
+        borderTop: '1px solid var(--border-default)', borderBottom: open ? '1px solid var(--border-default)' : 'none' }}
       className="hover:bg-gray-100 group"
     >
-      <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#94a3b8', marginRight: 4,
+      <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)', marginRight: 4,
         transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>chevron_right</span>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#374151', flex: 1 }}>{title}</span>
-      <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '0 6px',
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{title}</span>
+      <span style={{ fontSize: 10, color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '0 6px',
         borderRadius: 10, marginRight: 4 }}>{count}</span>
       {onStageAll && (
         <button title="Stage All" onClick={e => { e.stopPropagation(); onStageAll(); }}
           style={{ padding: '1px 4px', borderRadius: 3, border: 'none', background: 'transparent',
-            cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}
+            cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
           className="opacity-0 group-hover:opacity-100 hover:bg-gray-200 transition-opacity">
           <span className="material-symbols-outlined" style={{ fontSize: 13 }}>add</span>
         </button>
@@ -82,7 +82,7 @@ const Section: React.FC<SectionProps> = ({ title, count, open, onToggle, onStage
       {onUnstageAll && (
         <button title="Unstage All" onClick={e => { e.stopPropagation(); onUnstageAll(); }}
           style={{ padding: '1px 4px', borderRadius: 3, border: 'none', background: 'transparent',
-            cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}
+            cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
           className="opacity-0 group-hover:opacity-100 hover:bg-gray-200 transition-opacity">
           <span className="material-symbols-outlined" style={{ fontSize: 13 }}>remove</span>
         </button>
@@ -104,17 +104,17 @@ const FileRow: React.FC<{
   const dir  = file.path.includes('/') ? file.path.split('/').slice(0, -1).join('/') : '';
   return (
     <div className="group flex items-center gap-1 px-3 py-[4px] hover:bg-blue-50 cursor-default"
-      style={{ borderBottom: '1px solid #f8fafc' }}>
+      style={{ borderBottom: '1px solid var(--border-default)' }}>
       <span style={{ fontSize: 10, fontWeight: 700, width: 14, textAlign: 'center', flexShrink: 0,
         color: statusColor(file.statusLabel) }} title={statusTitle(file)}>
         {file.statusLabel}
       </span>
-      <span style={{ fontSize: 12, color: '#1e293b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      <span style={{ fontSize: 12, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
         title={file.path}>
         {name}
       </span>
       {dir && (
-        <span style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis',
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis',
           whiteSpace: 'nowrap', maxWidth: 80, flexShrink: 0 }} title={file.path}>{dir}</span>
       )}
       <div className="flex items-center gap-0.5 flex-shrink-0 ml-1">
@@ -265,26 +265,26 @@ export const GitPanel: React.FC = () => {
   const ahead     = status.ahead  ?? 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'white', fontSize: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-app)', fontSize: 12 }}>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', display: 'flex',
+      <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-default)', display: 'flex',
         alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <span className="material-symbols-outlined" style={{ fontSize: 15, color: '#64748b' }}>source</span>
-        <span style={{ fontWeight: 700, fontSize: 11, color: '#0f172a', flex: 1, textTransform: 'uppercase',
+        <span className="material-symbols-outlined" style={{ fontSize: 15, color: 'var(--text-muted)' }}>source</span>
+        <span style={{ fontWeight: 700, fontSize: 11, color: 'var(--text-primary)', flex: 1, textTransform: 'uppercase',
           letterSpacing: '0.5px' }}>Source Control</span>
         <button onClick={refresh} title="Refresh" disabled={loading}
-          style={{ padding: '3px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748b', display: 'flex' }}
+          style={{ padding: '3px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}
           className="hover:bg-gray-100">
           <span className={`material-symbols-outlined ${loading ? 'animate-spin' : ''}`} style={{ fontSize: 15 }}>refresh</span>
         </button>
         <button onClick={act(() => Cordex.git.pull(projectRoot))} title="Pull" style={{ padding: '3px', borderRadius: 4, border: 'none',
-          background: 'transparent', cursor: 'pointer', color: '#64748b', display: 'flex' }} className="hover:bg-gray-100">
+          background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }} className="hover:bg-gray-100">
           <span className="material-symbols-outlined" style={{ fontSize: 15 }}>download</span>
         </button>
         <button onClick={act(() => Cordex.git.push(projectRoot))} title={ahead ? `Push (${ahead} ahead)` : 'Push'} style={{ padding: '3px',
           borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer',
-          color: ahead ? '#3b82f6' : '#64748b', display: 'flex', position: 'relative' }} className="hover:bg-gray-100">
+          color: ahead ? '#3b82f6' : 'var(--text-muted)', display: 'flex', position: 'relative' }} className="hover:bg-gray-100">
           <span className="material-symbols-outlined" style={{ fontSize: 15 }}>upload</span>
           {ahead > 0 && (
             <span style={{ position: 'absolute', top: -3, right: -4, background: '#3b82f6', color: 'white',
@@ -294,23 +294,23 @@ export const GitPanel: React.FC = () => {
       </div>
 
       {/* ── Branch bar ─────────────────────────────────────────────────── */}
-      <div style={{ padding: '5px 10px', borderBottom: '1px solid #e2e8f0', display: 'flex',
+      <div style={{ padding: '5px 10px', borderBottom: '1px solid var(--border-default)', display: 'flex',
         alignItems: 'center', gap: 5, flexShrink: 0, cursor: 'pointer' }}
         onClick={() => setBranchOpen(v => !v)} className="hover:bg-gray-50">
-        <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#94a3b8' }}>fork_right</span>
-        <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, flex: 1 }}>{branch || 'No branch'}</span>
+        <span className="material-symbols-outlined" style={{ fontSize: 13, color: 'var(--text-muted)' }}>fork_right</span>
+        <span style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500, flex: 1 }}>{branch || 'No branch'}</span>
         {checkingOut && (
           <span className="material-symbols-outlined animate-spin" style={{ fontSize: 13, color: '#f97316' }}>autorenew</span>
         )}
-        <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#94a3b8',
+        <span className="material-symbols-outlined" style={{ fontSize: 13, color: 'var(--text-muted)',
           transform: branchOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>expand_more</span>
       </div>
 
       {/* Branch drawer */}
       {branchOpen && (
-        <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', flexShrink: 0 }}>
+        <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-default)', background: 'var(--bg-elevated)', flexShrink: 0 }}>
           <div style={{ marginBottom: 6 }}>
-            <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Switch Branch
               {checkingOut && <span style={{ marginLeft: 6, color: '#f97316' }}>Switching…</span>}
             </div>
@@ -318,8 +318,8 @@ export const GitPanel: React.FC = () => {
               value={branch}
               disabled={checkingOut}
               onChange={e => handleCheckout(e.target.value)}
-              style={{ width: '100%', fontSize: 11, padding: '4px 6px', border: `1px solid ${checkoutError ? '#fca5a5' : '#e2e8f0'}`,
-                borderRadius: 5, background: checkingOut ? '#f8fafc' : 'white', color: '#374151',
+              style={{ width: '100%', fontSize: 11, padding: '4px 6px', border: `1px solid ${checkoutError ? '#fca5a5' : 'var(--border-default)'}`,
+                borderRadius: 5, background: checkingOut ? 'var(--bg-elevated)' : 'var(--bg-app)', color: 'var(--text-primary)',
                 cursor: checkingOut ? 'not-allowed' : 'pointer' }}>
               {branches.map(b => <option key={b.name} value={b.name}>{b.current ? '✓ ' : '  '}{b.name}</option>)}
             </select>
@@ -333,8 +333,8 @@ export const GitPanel: React.FC = () => {
           <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
             <input value={newBranch} onChange={e => setNewBranch(e.target.value)}
               placeholder="new-branch-name"
-              style={{ flex: 1, fontSize: 11, padding: '4px 6px', border: '1px solid #e2e8f0',
-                borderRadius: 5, background: 'white', color: '#374151', outline: 'none' }} />
+              style={{ flex: 1, fontSize: 11, padding: '4px 6px', border: '1px solid var(--border-default)',
+                borderRadius: 5, background: 'var(--bg-app)', color: 'var(--text-primary)', outline: 'none' }} />
             <button onClick={act(() => { const b = newBranch.trim(); if (b) { setNewBranch(''); return Cordex.git.createBranch(projectRoot, b); } return Promise.resolve(); })}
               disabled={!newBranch.trim()}
               style={{ padding: '4px 10px', borderRadius: 5, border: 'none', background: '#2563eb', color: 'white',
@@ -344,8 +344,8 @@ export const GitPanel: React.FC = () => {
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             <select value={mergeBranch} onChange={e => setMergeBranch(e.target.value)}
-              style={{ flex: 1, fontSize: 11, padding: '4px 6px', border: '1px solid #e2e8f0',
-                borderRadius: 5, background: 'white', color: '#374151' }}>
+              style={{ flex: 1, fontSize: 11, padding: '4px 6px', border: '1px solid var(--border-default)',
+                borderRadius: 5, background: 'var(--bg-app)', color: 'var(--text-primary)' }}>
               <option value="">Merge branch into {branch}…</option>
               {branches.filter(b => !b.current).map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
             </select>
@@ -360,17 +360,16 @@ export const GitPanel: React.FC = () => {
       )}
 
       {/* ── Commit area ─────────────────────────────────────────────────── */}
-      <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+      <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-default)', flexShrink: 0 }}>
         <textarea
           value={message}
           onChange={e => setMessage(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleCommit(); }}
           placeholder="Message (Ctrl+Enter to commit)"
           rows={3}
-          style={{ width: '100%', fontSize: 12, padding: '6px 8px', border: '1px solid #e2e8f0',
-            borderRadius: 5, resize: 'none', outline: 'none', color: '#374151', background: '#f8fafc',
+          style={{ width: '100%', fontSize: 12, padding: '6px 8px', border: '1px solid var(--border-default)',
+            borderRadius: 5, resize: 'none', outline: 'none', color: 'var(--text-primary)', background: 'var(--bg-elevated)',
             fontFamily: 'inherit', boxSizing: 'border-box' }}
-          className="focus:border-blue-400 focus:bg-white"
         />
 
         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
@@ -393,7 +392,7 @@ export const GitPanel: React.FC = () => {
               disabled={syncing}
               title="Sync Changes — pull then push (like VS Code sync)"
               style={{ padding: '6px 10px', borderRadius: 5, border: 'none',
-                background: syncing ? '#e2e8f0' : '#0f172a', color: syncing ? '#64748b' : 'white',
+                background: syncing ? 'var(--border-default)' : '#0f172a', color: syncing ? 'var(--text-muted)' : 'white',
                 fontSize: 12, fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
               className="hover:bg-gray-800 transition-colors">
@@ -420,7 +419,7 @@ export const GitPanel: React.FC = () => {
       {/* ── File sections ─────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {staged.length === 0 && changes.length === 0 && (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: '#94a3b8', fontSize: 12, userSelect: 'none' }}>
+          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, userSelect: 'none' }}>
             <span className="material-symbols-outlined" style={{ fontSize: 28, display: 'block', marginBottom: 6 }}>check_circle</span>
             No changes
           </div>

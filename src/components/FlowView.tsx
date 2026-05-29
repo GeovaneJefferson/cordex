@@ -1,628 +1,569 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
-import { useAppState } from '../store/AppContext';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  NodeProps,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
+  ReactFlowProvider,
+  Panel,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
 import { Tab } from '../types';
 
-// ── Types ────────────────────────────────────────────────────────────────────
-interface FNode {
-  id: string; nodeType: string; label: string; sub?: string;
-  description?: string; errorMsg?: string; line?: number | null;
-  position: { x: number; y: number }; width: number; height: number;
-}
-interface FEdge { id: string; source: string; target: string; label?: string; kind?: string }
-interface FlowGraph { nodes: FNode[]; edges: FEdge[]; error?: string }
-interface LogEntry  { text: string; kind: 'info'|'success'|'error'|'ai'|'warn' }
-type NodeStatus = 'idle'|'running'|'success'|'error'|'predicted'|'risk'|'skipped';
-type PlayMode   = 'execution'|'simulation'|null;
+// ── Types matching flowHandler output ────────────────────────────────────────
 
-// ── Module-level graph cache ──────────────────────────────────────────────────
-const GRAPH_CACHE = new Map<string, { graph: FlowGraph; nodes: FNode[]; sourceHash: string }>();
-function hashStr(s: string) { let h = 0; for (let i = 0; i < Math.min(s.length, 500); i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h.toString(36); }
-
-// ── Node visual config ───────────────────────────────────────────────────────
-const NCFG: Record<string, { bg: string; border: string; icon: string; tag: string; tagColor: string; tagBg: string }> = {
-  entry:    { bg:'#f0fdf4', border:'#16a34a', icon:'play_arrow',    tag:'ENTRY',  tagColor:'#15803d', tagBg:'#dcfce7' },
-  exit:     { bg:'#fef2f2', border:'#dc2626', icon:'stop',          tag:'EXIT',   tagColor:'#b91c1c', tagBg:'#fee2e2' },
-  call:     { bg:'var(--bg-elevated)', border:'var(--border-default)', icon:'code',          tag:'DO',     tagColor:'#0284c7', tagBg:'#e0f2fe' },
-  decision: { bg:'#fffbeb', border:'#f59e0b', icon:'device_hub',    tag:'IF',     tagColor:'#b45309', tagBg:'#fef3c7' },
-  loop:     { bg:'#f5f3ff', border:'#7c3aed', icon:'autorenew',     tag:'LOOP',   tagColor:'#6d28d9', tagBg:'#ede9fe' },
-  error:    { bg:'#fff1f2', border:'#e11d48', icon:'error_outline', tag:'ERROR',  tagColor:'#be123c', tagBg:'#ffe4e6' },
-  value:    { bg:'#f0f9ff', border:'#0284c7', icon:'data_object',   tag:'VALUE',  tagColor:'#0369a1', tagBg:'#e0f2fe' },
-};
-const cfg = (t: string) => NCFG[t] ?? NCFG.call;
-const NODE_W = 260;
-
-const STATUS_STYLE: Record<NodeStatus, { border: string; bg: string; glow?: string }> = {
-  idle:      { border:'',        bg:''        },
-  running:   { border:'#f97316', bg:'#fff7ed', glow:'rgba(249,115,22,0.25)' },
-  success:   { border:'#16a34a', bg:'#f0fdf4', glow:'rgba(22,163,74,0.15)'  },
-  error:     { border:'#dc2626', bg:'#fff1f2', glow:'rgba(220,38,38,0.2)'   },
-  predicted: { border:'#0ea5e9', bg:'#f0f9ff', glow:'rgba(14,165,233,0.15)' },
-  risk:      { border:'#f59e0b', bg:'#fffbeb', glow:'rgba(245,158,11,0.2)'  },
-  skipped:   { border:'var(--border-strong)', bg:'var(--bg-elevated)' },
+type RFNode = {
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  nodeType: string;
+  label: string;
+  description: string | null;
+  errorMsg: string | null;
+  line: number | null;
+  width: number;
+  height: number;
 };
 
-function orthogonalPath(sx: number, sy: number, tx: number, ty: number) {
-  const midY = sy + Math.max(30, (ty - sy) / 2);
-  if (Math.abs(sx - tx) < 4) return `M ${sx} ${sy} L ${tx} ${ty}`;
-  return `M ${sx} ${sy} L ${sx} ${midY} L ${tx} ${midY} L ${tx} ${ty}`;
-}
+type RFEdge = {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+  animated?: boolean;
+  type?: string;
+  labelStyle?: React.CSSProperties;
+  labelBgStyle?: React.CSSProperties;
+  labelBgPadding?: [number, number];
+  style?: React.CSSProperties;
+};
 
-// ── NodeCard ─────────────────────────────────────────────────────────────────
-const NodeCard: React.FC<{
-  node: FNode; selected: boolean; status: NodeStatus; riskReasons?: string[];
-  onClick: () => void;
-}> = ({ node, selected, status, riskReasons = [], onClick }) => {
-  const d = (node as any).data ?? node;
-  const nodeType = d.nodeType ?? node.nodeType ?? 'call';
-  const label    = d.label    ?? node.label    ?? node.id;
-  const desc     = d.description ?? node.description ?? null;
-  const errMsg   = d.errorMsg    ?? node.errorMsg    ?? null;
-  const c   = cfg(nodeType);
-  const st  = STATUS_STYLE[status];
-  const border = selected ? '#f97316' : (st.border || c.border);
-  const bg     = st.bg || c.bg;
-  const shadow = selected
-    ? '0 0 0 3px rgba(249,115,22,0.25),0 4px 16px rgba(0,0,0,0.1)'
-    : st.glow ? `0 0 0 2px ${st.glow},0 2px 10px rgba(0,0,0,0.07)` : '0 2px 8px rgba(0,0,0,0.07)';
+type SimulationResult = {
+  executedNodes: string[];
+  riskNodes: Array<{ id: string; risks: string[] }>;
+  predictedNodes: string[];
+  fileRisks: string[];
+  mode: string;
+};
 
-  const iconName = status==='running'?'autorenew':status==='success'?'check_circle':status==='error'?'error':status==='risk'?'warning':status==='predicted'?'trending_flat':status==='skipped'?'remove_circle':c.icon;
-  const iconBg   = status==='running'?'#f97316':status==='success'?'#16a34a':status==='error'?'#dc2626':status==='risk'?'#f59e0b':status==='predicted'?'#0ea5e9':status==='skipped'?'var(--text-muted)':border;
+type RunResult = {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  timedOut: boolean;
+  mode: string;
+  errorLine?: number | null;
+  hasStderrErrors?: boolean;
+  phase?: string;
+};
+
+// ── Node type → visual config ─────────────────────────────────────────────────
+
+const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; iconColor: string }> = {
+  entry:    { bg: '#f0fdf4', border: '#22c55e', icon: 'play_arrow',      iconColor: '#16a34a' },
+  exit:     { bg: '#f0f9ff', border: '#38bdf8', icon: 'stop',            iconColor: '#0284c7' },
+  call:     { bg: '#ffffff', border: '#cbd5e1', icon: 'call_made',        iconColor: '#64748b' },
+  decision: { bg: '#fefce8', border: '#fbbf24', icon: 'device_hub',      iconColor: '#d97706' },
+  loop:     { bg: '#faf5ff', border: '#a78bfa', icon: 'loop',            iconColor: '#7c3aed' },
+  error:    { bg: '#fff1f2', border: '#f87171', icon: 'error_outline',   iconColor: '#dc2626' },
+  value:    { bg: '#f8fafc', border: '#94a3b8', icon: 'data_object',     iconColor: '#475569' },
+};
+
+const getNodeStyle = (nodeType: string) => NODE_STYLES[nodeType] ?? NODE_STYLES.call;
+
+// ── Custom FlowNode renderer ──────────────────────────────────────────────────
+
+const FlowNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
+  const style = getNodeStyle(data.nodeType);
+  const simState: 'executed' | 'risk' | 'predicted' | 'idle' = data.__simState ?? 'idle';
+
+  const ringColor =
+    simState === 'executed'  ? '#22c55e' :
+    simState === 'risk'      ? '#ef4444' :
+    simState === 'predicted' ? '#f59e0b' :
+    selected                 ? '#6366f1' :
+    style.border;
 
   return (
-    <div data-node-id={node.id}
-      style={{ position:'absolute', left:node.position.x, top:node.position.y,
-        width:NODE_W, background:bg, border:`2px solid ${border}`,
-        borderRadius:12, cursor:'grab', userSelect:'none',
-        boxShadow:shadow, transition:'border-color .2s,box-shadow .2s,background .2s', zIndex:selected?10:5 }}
-      onClick={onClick}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px 6px' }}>
-        <div style={{ width:32, height:32, borderRadius:7, flexShrink:0, background:iconBg,
-          display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <span className="material-symbols-outlined" style={{ fontSize:17, color:'white',
-            animation:status==='running'?'spin 1s linear infinite':'none' }}>{iconName}</span>
-        </div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:'var(--text-primary)', lineHeight:1.3, wordBreak:'break-word' }}>{label}</div>
-          {node.line && <div style={{ fontSize:9, color:'var(--text-muted)', fontFamily:'monospace' }}>line {node.line}</div>}
-        </div>
-      </div>
-      <div style={{ paddingLeft:14, paddingBottom:6, display:'flex', gap:6, flexWrap:'wrap' }}>
-        <span style={{ fontSize:9, fontWeight:700, letterSpacing:'.6px', background:c.tagBg, color:c.tagColor, padding:'2px 6px', borderRadius:4 }}>{c.tag}</span>
-        {status !== 'idle' && (
-          <span style={{ fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4,
-            background:st.glow?st.bg:'var(--bg-muted)', color:border, border:`1px solid ${border}` }}>
-            {status.toUpperCase()}
-          </span>
+    <div
+      style={{
+        width: 260,
+        minHeight: 80,
+        background: style.bg,
+        border: `2px solid ${ringColor}`,
+        borderRadius: 10,
+        boxShadow: selected
+          ? `0 0 0 3px ${ringColor}33, 0 4px 16px rgba(0,0,0,0.10)`
+          : '0 2px 8px rgba(0,0,0,0.07)',
+        padding: '10px 14px',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+        cursor: 'default',
+        position: 'relative',
+      }}
+    >
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: data.description ? 6 : 0 }}>
+        <span
+          className="material-symbols-outlined"
+          style={{ fontSize: 16, color: style.iconColor, flexShrink: 0, lineHeight: 1 }}
+        >
+          {style.icon}
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', lineHeight: 1.3, flex: 1 }}>
+          {data.label}
+        </span>
+        {data.line != null && (
+          <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>:{data.line}</span>
         )}
       </div>
-      {(desc || errMsg) && (
-        <div style={{ margin:'0 14px 10px', borderTop:`1px dashed ${border}`, paddingTop:7 }}>
-          {desc && <div style={{ fontFamily:'monospace', fontSize:11, color:status==='success'?'#15803d':status==='error'?'#dc2626':'var(--text-tertiary)', lineHeight:1.4 }}>{desc}</div>}
-          {errMsg && <div style={{ fontFamily:'monospace', fontSize:11, color:'#dc2626', background:'#fef2f2', borderRadius:4, padding:'3px 6px', marginTop:4 }}>{errMsg}</div>}
-        </div>
-      )}
-      {status === 'risk' && riskReasons.length > 0 && (
-        <div style={{ margin:'0 14px 10px', background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:6, padding:'6px 8px' }}>
-          <div style={{ fontSize:10, fontWeight:700, color:'#b45309', marginBottom:3 }}>⚠ Static warnings</div>
-          {riskReasons.map((r,i) => <div key={i} style={{ fontSize:10, color:'#92400e' }}>• {r}</div>)}
-        </div>
-      )}
-      {status === 'error' && (
-        <div style={{ margin:'0 14px 10px', background:'#f5f3ff', border:'1px solid #a78bfa', borderRadius:6, padding:'6px 10px' }}>
-          <div style={{ fontSize:10, color:'#6d28d9' }}>
-            <span className="material-symbols-outlined" style={{ fontSize:11, verticalAlign:'middle', marginRight:3 }}>memory</span>
-            Open Chat → Bug Fix for AI repair suggestions.
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
-// ── RightPanel ───────────────────────────────────────────────────────────────
-const RightPanel: React.FC<{
-  mode: PlayMode; running: boolean; logs: LogEntry[];
-  stats: { executed:number; errors:number; risks:number; predicted:number; total:number }|null;
-  onPlay: ()=>void; onReset: ()=>void; onStop: ()=>void;
-  onRegenerate: ()=>void;
-}> = ({ mode, running, logs, stats, onPlay, onReset, onStop, onRegenerate }) => {
-  const logsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight; }, [logs]);
-
-  return (
-    <div style={{ width:300, borderLeft:'1px solid var(--border-default)', background:'var(--bg-app)', display:'flex', flexDirection:'column', flexShrink:0 }}>
-      {mode && (
-        <div style={{ padding:'8px 12px', borderBottom:'1px solid var(--border-default)',
-          background:mode==='execution'?'rgba(22,163,74,0.08)':'rgba(59,130,246,0.08)', display:'flex', alignItems:'center', gap:8 }}>
-          <span className="material-symbols-outlined" style={{ fontSize:15, color:mode==='execution'?'#16a34a':'#3b82f6' }}>
-            {mode==='execution'?'bolt':'analytics'}
-          </span>
-          <div>
-            <div style={{ fontSize:11, fontWeight:700, color:mode==='execution'?'#16a34a':'#3b82f6' }}>
-              {mode==='execution'?'⚡ EXECUTION MODE':'🔵 SIMULATION MODE'}
-            </div>
-            <div style={{ fontSize:10, color:'var(--text-tertiary)' }}>{mode==='execution'?'Real subprocess':'Static analysis'}</div>
-          </div>
-        </div>
+      {/* Description */}
+      {data.description && (
+        <p style={{ fontSize: 11, color: '#64748b', margin: 0, lineHeight: 1.4 }}>
+          {data.description}
+        </p>
       )}
-      {stats && (
-        <div style={{ padding:'8px 12px', borderBottom:'1px solid var(--border-default)', display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
-          {[['Executed','#16a34a',stats.executed],['Errors','#dc2626',stats.errors],['Risks','#f59e0b',stats.risks],['Predicted','#0ea5e9',stats.predicted]].map(([l,c,v]) => (
-            <div key={l as string} style={{ background:'var(--bg-elevated)', borderRadius:6, padding:'4px 8px', borderLeft:`3px solid ${c}` }}>
-              <div style={{ fontSize:16, fontWeight:800, color:c as string, lineHeight:1 }}>{v as number}</div>
-              <div style={{ fontSize:9, color:'var(--text-muted)', fontWeight:600 }}>{(l as string).toUpperCase()}</div>
-            </div>
+
+      {/* Risk badge */}
+      {simState === 'risk' && data.__risks?.length > 0 && (
+        <div style={{
+          marginTop: 6,
+          background: '#fff1f2',
+          border: '1px solid #fecaca',
+          borderRadius: 5,
+          padding: '3px 7px',
+        }}>
+          {(data.__risks as string[]).map((r: string) => (
+            <p key={r} style={{ fontSize: 10, color: '#dc2626', margin: 0, lineHeight: 1.5 }}>⚠ {r}</p>
           ))}
         </div>
       )}
-      <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--border-default)', display:'flex', flexDirection:'column', gap:6 }}>
-        {running
-          ? <button onClick={onStop} style={{ width:'100%', padding:'7px 0', background:'#dc2626', color:'white', border:'none', borderRadius:7, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-              <span className="material-symbols-outlined" style={{ fontSize:16 }}>stop</span>Stop
-            </button>
-          : <button onClick={onPlay} style={{ width:'100%', padding:'7px 0', background:'#16a34a', color:'white', border:'none', borderRadius:7, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-              <span className="material-symbols-outlined" style={{ fontSize:16 }}>play_arrow</span>{mode?'Run Again':'Run / Simulate'}
-            </button>}
-        <button onClick={onReset} style={{ width:'100%', padding:'5px 0', background:'var(--bg-elevated)', color:'var(--text-tertiary)', border:'1px solid var(--border-default)', borderRadius:7, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
-          <span className="material-symbols-outlined" style={{ fontSize:14 }}>refresh</span>Reset
-        </button>
-        <button onClick={onRegenerate} style={{ width:'100%', padding:'5px 0', background:'var(--bg-elevated)', color:'var(--text-muted)', border:'1px solid var(--border-default)', borderRadius:7, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
-          <span className="material-symbols-outlined" style={{ fontSize:14 }}>account_tree</span>Regenerate flow
+
+      {/* Sim state badge */}
+      {simState !== 'idle' && (
+        <div style={{
+          position: 'absolute',
+          top: -8,
+          right: 10,
+          fontSize: 9,
+          fontWeight: 700,
+          letterSpacing: '0.04em',
+          padding: '2px 7px',
+          borderRadius: 99,
+          background: simState === 'executed' ? '#dcfce7' : simState === 'risk' ? '#fee2e2' : '#fef9c3',
+          color:      simState === 'executed' ? '#15803d' : simState === 'risk' ? '#b91c1c' : '#854d0e',
+          border: `1px solid ${simState === 'executed' ? '#bbf7d0' : simState === 'risk' ? '#fca5a5' : '#fde68a'}`,
+        }}>
+          {simState.toUpperCase()}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const nodeTypes = { flowNode: FlowNodeComponent };
+
+// ── Output Panel ─────────────────────────────────────────────────────────────
+
+const OutputPanel: React.FC<{
+  result: RunResult | null;
+  simResult: SimulationResult | null;
+  onClose: () => void;
+}> = ({ result, simResult, onClose }) => {
+  if (!result && !simResult) return null;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: 180,
+      background: '#0f172a',
+      borderTop: '1px solid #1e293b',
+      display: 'flex',
+      flexDirection: 'column',
+      zIndex: 20,
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        padding: '4px 12px',
+        borderBottom: '1px solid #1e293b',
+        gap: 8,
+        flexShrink: 0,
+      }}>
+        {result && (
+          <>
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: 13, color: result.success ? '#4ade80' : '#f87171' }}
+            >
+              {result.success ? 'check_circle' : 'cancel'}
+            </span>
+            <span style={{ fontSize: 11, color: '#94a3b8', flex: 1 }}>
+              {result.mode === 'execution'
+                ? `Exit ${result.exitCode}${result.timedOut ? ' · timed out' : ''}`
+                : 'Simulation complete'}
+            </span>
+          </>
+        )}
+        {simResult && !result && (
+          <>
+            <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#a78bfa' }}>psychology</span>
+            <span style={{ fontSize: 11, color: '#94a3b8', flex: 1 }}>
+              Static analysis · {simResult.executedNodes.length} executed · {simResult.riskNodes.length} risks
+            </span>
+          </>
+        )}
+        <button
+          onClick={onClose}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#475569' }}>close</span>
         </button>
       </div>
-      <div style={{ padding:'6px 12px 4px', fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px', color:'var(--text-muted)', borderBottom:'1px solid var(--border-subtle)' }}>
-        Output
-      </div>
-      <div ref={logsRef} style={{ flex:1, overflowY:'auto', padding:'4px 6px', display:'flex', flexDirection:'column', gap:2 }}>
-        {logs.map((l,i) => (
-          <div key={i} style={{ fontSize:10.5, fontFamily:'monospace', lineHeight:1.4, padding:'2px 7px', borderRadius:4,
-            borderLeft:`3px solid ${l.kind==='success'?'#16a34a':l.kind==='error'?'#dc2626':l.kind==='warn'?'#f59e0b':l.kind==='ai'?'#7c3aed':'var(--border-strong)'}`,
-            background:l.kind==='success'?'rgba(22,163,74,0.08)':l.kind==='error'?'rgba(220,38,38,0.08)':l.kind==='warn'?'rgba(245,158,11,0.08)':l.kind==='ai'?'rgba(124,58,237,0.08)':'var(--bg-elevated)',
-            color:l.kind==='success'?'#16a34a':l.kind==='error'?'#ef4444':l.kind==='warn'?'#f59e0b':l.kind==='ai'?'#8b5cf6':'var(--text-secondary)',
-            whiteSpace:'pre-wrap', wordBreak:'break-all' }}>
-            {l.text}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', fontFamily: 'monospace', fontSize: 11 }}>
+        {result?.stdout && (
+          <pre style={{ color: '#e2e8f0', margin: 0, whiteSpace: 'pre-wrap' }}>{result.stdout}</pre>
+        )}
+        {result?.stderr && (
+          <pre style={{ color: '#f87171', margin: 0, whiteSpace: 'pre-wrap', marginTop: result.stdout ? 8 : 0 }}>
+            {result.stderr}
+          </pre>
+        )}
+        {(simResult?.fileRisks?.length ?? 0) > 0 && !result && (
+          <div>
+            {simResult!.fileRisks.map(r => (
+              <p key={r} style={{ color: '#fbbf24', margin: '2px 0' }}>⚠ {r}</p>
+            ))}
           </div>
-        ))}
+        )}
+        {simResult && !result && simResult.fileRisks?.length === 0 && (
+          <p style={{ color: '#4ade80', margin: 0 }}>No global risks detected.</p>
+        )}
       </div>
     </div>
   );
 };
 
-// ══════════════════════════════════════════════════════════════════════════════
-export const FlowView: React.FC<{ flowTab?: Tab }> = ({ flowTab }) => {
-  const { state } = useAppState();
+// ── Inner flow canvas (needs ReactFlowProvider context) ──────────────────────
 
-  const sourceTab = flowTab?.flowSourceTabId
-    ? state.tabs.find((t: Tab) => t.id === flowTab!.flowSourceTabId)
-    : state.tabs.find((t: Tab) => t.id === state.activeTabId && t.tabType !== 'flow');
+const FlowCanvas: React.FC<{
+  flowTab: Tab;
+  rfNodes: RFNode[];
+  rfEdges: RFEdge[];
+  simResult: SimulationResult | null;
+  runResult: RunResult | null;
+  onCloseOutput: () => void;
+}> = ({ flowTab, rfNodes, rfEdges, simResult, runResult, onCloseOutput }) => {
+  const { fitView } = useReactFlow();
 
-  const cacheKey = flowTab?.flowSourceTabId ?? sourceTab?.id ?? '';
-
-  const [graph,      setGraph]      = useState<FlowGraph|null>(() => GRAPH_CACHE.get(cacheKey)?.graph ?? null);
-  const [nodes,      setNodes]      = useState<FNode[]>(() => GRAPH_CACHE.get(cacheKey)?.nodes ?? []);
-  const [analyzing,  setAnalyzing]  = useState(false);
-  const [selected,   setSelected]   = useState<string|null>(null);
-  const [logs,       setLogs]       = useState<LogEntry[]>([{ text:'Ready. Press Run to execute or simulate.', kind:'info' }]);
-  const [running,    setRunning]    = useState(false);
-  const [playMode,   setPlayMode]   = useState<PlayMode>(null);
-  const [nodeStatus, setNodeStatus] = useState<Record<string,NodeStatus>>({});
-  const [riskMap,    setRiskMap]    = useState<Record<string,string[]>>({});
-  const [stats,      setStats]      = useState<{executed:number;errors:number;risks:number;predicted:number;total:number}|null>(null);
-
-  // Z-zoom state — with debouncing for precision
-  const [zoomMode,   setZoomMode]   = useState(false);
-  const [zoomRect,   setZoomRect]   = useState<{x:number;y:number;w:number;h:number}|null>(null);
-
-  // Calculate content size based on actual node positions
-  const contentSize = React.useMemo(() => {
-    if (!nodes.length) return { width: 3000, height: 2000 };
-    let maxX = 0, maxY = 0;
-    nodes.forEach(n => {
-      maxX = Math.max(maxX, n.position.x + NODE_W + 100);
-      maxY = Math.max(maxY, n.position.y + (n.height ?? 100) + 100);
-    });
-    return { width: Math.max(3000, maxX), height: Math.max(2000, maxY) };
-  }, [nodes]);
-
-  const zoomApiRef = useRef<any>(null);
-  const canvasRef  = useRef<HTMLDivElement>(null);
-  const zoomStartRef = useRef<{x:number;y:number}|null>(null);
-
-  const addLog = useCallback((text: string, kind: LogEntry['kind'] = 'info') =>
-    setLogs(l => [...l, { text, kind }]), []);
-
-  const resetStatuses = useCallback((ns: FNode[]) => {
-    const m: Record<string,NodeStatus> = {};
-    ns.forEach(n => { m[n.id] = 'idle'; });
-    setNodeStatus(m); setRiskMap({}); setStats(null);
-  }, []);
-
-  const computeStats = useCallback((statuses: Record<string,NodeStatus>) => {
-    const v = Object.values(statuses);
-    setStats({ executed:v.filter(s=>s==='success').length, errors:v.filter(s=>s==='error').length, risks:v.filter(s=>s==='risk').length, predicted:v.filter(s=>s==='predicted').length, total:v.length });
-  }, []);
-
-  // ── Graph generation ──────────────────────────────────────────────────────
-  const analyze = useCallback(async () => {
-    if (!sourceTab?.content) return;
-    setAnalyzing(true); setGraph(null); setNodes([]); setPlayMode(null);
-    setLogs([{ text:`[AI] Analyzing ${sourceTab.name}…`, kind:'ai' }]);
-    try {
-      const result = await (window as any).electronAPI?.analyzeFlow?.({
-        code: sourceTab.content, filePath: sourceTab.path ?? null,
-        projectRoot: (window as any).__cordexRoot ?? null,
-      });
-      if (result?.nodes?.length) {
-        setGraph(result); setNodes(result.nodes);
-        resetStatuses(result.nodes);
-        GRAPH_CACHE.set(cacheKey, { graph:result, nodes:result.nodes, sourceHash:hashStr(sourceTab.content) });
-        addLog(`[Flow] ${result.nodes.length} nodes, ${result.edges?.length ?? 0} edges`, 'success');
-      } else { addLog(result?.error ?? 'No flow data returned', 'error'); }
-    } catch (e: any) { addLog(`[Error] ${e?.message}`, 'error'); }
-    finally { setAnalyzing(false); }
-  }, [sourceTab, cacheKey, resetStatuses, addLog]);
-
-  useEffect(() => {
-    if (!sourceTab?.content) return;
-    const cached = GRAPH_CACHE.get(cacheKey);
-    if (cached) { setGraph(cached.graph); setNodes(cached.nodes); resetStatuses(cached.nodes); return; }
-    analyze();
-  }, [cacheKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-zoom to first error node when graph loads
-  useEffect(() => {
-    if (!nodes.length || !zoomApiRef.current || !canvasRef.current) return;
-    const errNode = nodes.find(n => n.nodeType === 'error');
-    if (!errNode) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const targetScale = 1.1;
-    const nodeW = NODE_W;
-    const nodeH = errNode.height ?? 110;
-    const newPosX = rect.width  / 2 - (errNode.position.x + nodeW / 2) * targetScale;
-    const newPosY = rect.height / 2 - (errNode.position.y + nodeH / 2) * targetScale;
-    setTimeout(() => zoomApiRef.current?.setTransform(newPosX, newPosY, targetScale, 450, 'easeOut'), 200);
-  }, [nodes]);
-
-  const nodeForLine = useCallback((line: number): string|null => {
-    if (!nodes.length) return null;
-    const withLines = nodes.filter(n => n.line != null);
-    if (withLines.length > 0) {
-      const best = withLines.reduce((p,c) => Math.abs((c.line??0)-line) < Math.abs((p.line??0)-line) ? c : p);
-      if (Math.abs((best.line??0)-line) < 30) return best.id;
+  // Merge simulation state into node data
+  const enrichedNodes = rfNodes.map(n => {
+    let simState: 'executed' | 'risk' | 'predicted' | 'idle' = 'idle';
+    let risks: string[] = [];
+    if (simResult) {
+      if (simResult.executedNodes.includes(n.id))       simState = 'executed';
+      else if (simResult.predictedNodes.includes(n.id)) simState = 'predicted';
+      const riskEntry = simResult.riskNodes.find(r => r.id === n.id);
+      if (riskEntry) { simState = 'risk'; risks = riskEntry.risks; }
     }
-    const sorted = [...nodes].sort((a,b) => a.position.y-b.position.y);
-    return (sorted.filter(n=>(n.nodeType??'call')!=='exit').at(-1) ?? sorted.at(-1))?.id ?? null;
-  }, [nodes]);
-
-  // ── Execution mode ────────────────────────────────────────────────────────
-  const runExecution = useCallback(async (language: string) => {
-    if (!sourceTab || !graph) return;
-    addLog(`[⚡ Exec] Running ${sourceTab.name}…`, 'info');
-    const fresh: Record<string,NodeStatus> = {};
-    nodes.forEach(n => { fresh[n.id] = 'idle'; });
-    setNodeStatus({ ...fresh });
-
-    const result = await (window as any).electronAPI?.runFlow?.({ code:sourceTab.content, language, filePath:sourceTab.path });
-    if (!result) { addLog('[Error] No response from execution engine', 'error'); return; }
-
-    const sorted = [...nodes].sort((a,b) => a.position.y-b.position.y);
-    const errorLine = result.errorLine;
-    const hasRealError = !result.success || result.hasStderrErrors;
-
-    if (!hasRealError) {
-      sorted.forEach(n => { fresh[n.id] = 'success'; });
-      setNodeStatus({ ...fresh });
-      addLog(`✓ Exit 0`, 'success');
-      if (result.stdout) result.stdout.split('\n').forEach((l: string) => l && addLog(l, 'success'));
-      if (result.stderr) result.stderr.split('\n').forEach((l: string) => l && addLog(l, 'warn'));
-    } else {
-      const errorNodeId = errorLine ? nodeForLine(errorLine) : null;
-      let hitError = false;
-      for (const node of sorted) {
-        if (!hitError) {
-          if (node.id === errorNodeId) { fresh[node.id] = 'error'; hitError = true; }
-          else fresh[node.id] = 'success';
-        } else { fresh[node.id] = 'skipped'; }
-      }
-      if (!hitError && sorted.length) {
-        const errTarget = sorted.filter(n=>n.nodeType!=='exit').at(-1) ?? sorted.at(-1);
-        if (errTarget) {
-          fresh[errTarget.id] = 'error';
-          sorted.filter(n => n.id !== errTarget.id && fresh[n.id] !== 'skipped').forEach(n => { fresh[n.id] = 'success'; });
-        }
-      }
-      setNodeStatus({ ...fresh });
-      addLog(`✗ Exit ${result.exitCode}${result.hasStderrErrors && result.success ? ' (runtime error caught)' : ''}`, 'error');
-      if (result.phase === 'compile') addLog('[Compile phase failed]', 'error');
-      if (result.stderr) result.stderr.split('\n').slice(0,25).forEach((l:string) => l && addLog(l, 'error'));
-      if (result.stdout) result.stdout.split('\n').forEach((l:string) => l && addLog(l, 'info'));
-    }
-    computeStats(fresh);
-  }, [sourceTab, graph, nodes, nodeForLine, addLog, computeStats]);
-
-  // ── Simulation mode ───────────────────────────────────────────────────────
-  const runSimulation = useCallback(async (language: string) => {
-    if (!graph) return;
-    addLog(`[🔵 Sim] Static analysis of ${sourceTab?.name}…`, 'ai');
-    const result = await (window as any).electronAPI?.simulateFlow?.({ code:sourceTab?.content??'', language, nodes });
-    if (!result) { addLog('[Error] Simulation failed', 'error'); return; }
-    const fresh: Record<string,NodeStatus> = {};
-    nodes.forEach(n => { fresh[n.id]='idle'; });
-    (result.executedNodes??[]).forEach((id:string) => { fresh[id]='success'; });
-    (result.predictedNodes??[]).forEach((id:string) => { fresh[id]='predicted'; });
-    const newRiskMap: Record<string,string[]> = {};
-    (result.riskNodes??[]).forEach(({ id, risks }: {id:string;risks:string[]}) => { fresh[id]='risk'; newRiskMap[id]=risks; });
-    setNodeStatus(fresh); setRiskMap(newRiskMap); computeStats(fresh);
-    addLog(`Predicted: ${(result.executedNodes??[]).length} executed, ${(result.riskNodes??[]).length} risky`, 'info');
-    if (result.fileRisks?.length) addLog(`File risks: ${result.fileRisks.join(', ')}`, 'warn');
-    addLog('Simulation is approximate — no code was executed.', 'ai');
-  }, [sourceTab, graph, nodes, addLog, computeStats]);
-
-  const handlePlay = useCallback(async () => {
-    if (!sourceTab || !graph || running) return;
-    setRunning(true);
-    setLogs([{ text:'[Play] Detecting mode…', kind:'info' }]);
-    resetStatuses(nodes);
-    const language = sourceTab.language ?? 'plaintext';
-    const modeRes = await (window as any).electronAPI?.detectFlowMode?.({ language, filePath:sourceTab.path });
-    const mode: PlayMode = modeRes?.mode ?? 'simulation';
-    setPlayMode(mode);
-    addLog(mode==='execution' ? `[Mode] ⚡ EXECUTION — ${modeRes?.reason}` : `[Mode] 🔵 SIMULATION — ${modeRes?.reason??'static analysis'}`, mode==='execution'?'success':'ai');
-    if (mode === 'execution') await runExecution(language);
-    else await runSimulation(language);
-    setRunning(false);
-  }, [sourceTab, graph, running, nodes, resetStatuses, addLog, runExecution, runSimulation]);
-
-  const handleStop = () => { setRunning(false); addLog('[Stopped]', 'warn'); };
-  const handleReset = () => { resetStatuses(nodes); setPlayMode(null); setLogs([{ text:'Reset.', kind:'info' }]); };
-  const handleRegenerate = () => { GRAPH_CACHE.delete(cacheKey); analyze(); };
-
-  // ── Edges ─────────────────────────────────────────────────────────────────
-  const renderEdges = () => {
-    if (!graph) return null;
-    const byId: Record<string,FNode> = {};
-    nodes.forEach(n => { byId[n.id]=n; });
-    return graph.edges.map(edge => {
-      const src=byId[edge.source], tgt=byId[edge.target];
-      if (!src||!tgt) return null;
-      const sx=src.position.x+NODE_W/2, sy=src.position.y+(src.height??100)+4;
-      const tx=tgt.position.x+NODE_W/2, ty=tgt.position.y-4;
-      const isErr = edge.kind==='error' || ['raises','error','catch'].includes(edge.label??'');
-      const isBr  = edge.kind==='branch'|| ['false','no','else'].includes(edge.label??'');
-      const stroke= isErr?'#ef4444':isBr?'#f59e0b':'var(--text-muted)';
-      return (
-        <g key={edge.id}>
-          <path d={orthogonalPath(sx,sy,tx,ty)} fill="none" stroke={stroke}
-            strokeWidth={isErr?2.5:2} strokeDasharray={isErr?'6 3':undefined}
-            markerEnd={`url(#arr-${isErr?'red':isBr?'amber':'gray'})`} />
-          {edge.label && (
-            <g transform={`translate(${(sx+tx)/2},${sy+(ty-sy)/2})`}>
-              <rect x={-32} y={-9} width={64} height={18} rx={4} fill="white" stroke={stroke} strokeWidth={1}/>
-              <text textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight={600} fill={stroke}>{edge.label}</text>
-            </g>
-          )}
-        </g>
-      );
-    });
-  };
-
-  // ── Z-box-zoom handlers (using the library's setTransform) ────────────────
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'z' || e.key === 'Z') && !e.ctrlKey && !e.metaKey) {
-        if (!e.repeat) setZoomMode(true);
-        e.preventDefault();
-      }
-      if (e.key === 'Escape') {
-        setZoomMode(false);
-        setZoomRect(null);
-      }
+    return {
+      ...n,
+      data: {
+        nodeType:    n.nodeType,
+        label:       n.label,
+        description: n.description,
+        errorMsg:    n.errorMsg,
+        line:        n.line,
+        __simState:  simState,
+        __risks:     risks,
+      },
     };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'z' || e.key === 'Z') {
-        setZoomMode(false);
-        setZoomRect(null);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-    };
-  }, []);
+  });
 
-  // Mouse handler for box-zoom — uses window listeners so TransformWrapper can't steal events
-  const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!zoomMode || e.button !== 0) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    zoomStartRef.current = { x, y };
-    setZoomRect({ x, y, w: 0, h: 0 });
-    e.preventDefault();
-    e.stopPropagation();
+  const [nodes, , onNodesChange] = useNodesState(enrichedNodes);
+  const [edges, , onEdgesChange] = useEdgesState(rfEdges as any);
 
-    const onMove = (mv: MouseEvent) => {
-      if (!zoomStartRef.current || !canvasRef.current) return;
-      const r = canvasRef.current.getBoundingClientRect();
-      const cx = mv.clientX - r.left, cy = mv.clientY - r.top;
-      const { x: sx, y: sy } = zoomStartRef.current;
-      setZoomRect({ x: Math.min(sx, cx), y: Math.min(sy, cy), w: Math.abs(cx - sx), h: Math.abs(cy - sy) });
-    };
+  useEffect(() => { setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 80); }, [rfNodes.length]);
 
-    const onUp = (up: MouseEvent) => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      if (!canvasRef.current || !zoomStartRef.current) { setZoomMode(false); return; }
-      const r = canvasRef.current.getBoundingClientRect();
-      const cx = up.clientX - r.left, cy = up.clientY - r.top;
-      const { x: sx, y: sy } = zoomStartRef.current;
-      const rw = Math.abs(cx - sx), rh = Math.abs(cy - sy);
-      if (rw > 10 && rh > 10) {
-        const rx = Math.min(sx, cx), ry = Math.min(sy, cy);
-        const api = zoomApiRef.current;
-        if (api) {
-          const { scale: curScale, positionX: curPosX, positionY: curPosY } = api.state;
-          // Calculate new scale to fit the selected rectangle
-          const newScale = Math.min(2, Math.max(0.2, Math.min(r.width / rw, r.height / rh) * 0.95));
-          // Calculate the center of the selection rectangle in screen coordinates
-          const screenCenterX = rx + rw / 2;
-          const screenCenterY = ry + rh / 2;
-          // Calculate the center in world coordinates
-          const worldCenterX = (screenCenterX - curPosX) / curScale;
-          const worldCenterY = (screenCenterY - curPosY) / curScale;
-          // Calculate new position to center the selection
-          const newPosX = (r.width / 2) - (worldCenterX * newScale);
-          const newPosY = (r.height / 2) - (worldCenterY * newScale);
-          api.setTransform(newPosX, newPosY, newScale, 300, 'easeOut');
-        }
-      }
-      zoomStartRef.current = null;
-      setZoomRect(null);
-      setZoomMode(false);
-    };
+  const hasOutput = !!runResult || !!simResult;
 
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [zoomMode]);
-
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ flex:1, display:'flex', overflow:'hidden', background:'var(--bg-elevated)' }}>
-      {/* ── Canvas ────────────────────────────────────────────────────────── */}
-      <div
-        ref={canvasRef}
-        style={{ flex:1, position:'relative', overflow:'hidden',
-          backgroundImage:'radial-gradient(circle, #cbd5e1 1px, transparent 1px)',
-          backgroundSize:'20px 20px',
-          cursor: zoomMode ? 'crosshair' : 'grab',
-          userSelect: 'none',
-        }}
-        onMouseDown={onCanvasMouseDown}
-        onContextMenu={e => e.preventDefault()}
+    <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.15 }}
+        minZoom={0.2}
+        maxZoom={2}
+        style={{ background: '#f8fafc', height: hasOutput ? 'calc(100% - 180px)' : '100%' }}
+        proOptions={{ hideAttribution: true }}
       >
-        <TransformWrapper
-          initialScale={0.9}
-          initialPositionX={60}
-          initialPositionY={40}
-          minScale={0.2}
-          maxScale={2}
-          wheel={{ step: 0.1 }}
-          panning={{ disabled: zoomMode, velocityDisabled: true }}
-          doubleClick={{ disabled: true }}
-          onInit={ref => (zoomApiRef.current = ref)}
-        >
-          {({ zoomIn, zoomOut, resetTransform, state: { scale } }) => (
-            <>
-              {/* Toolbar */}
-              {graph && (
-                <div style={{ position:'absolute', top:10, left:10, right:10, zIndex:20, display:'flex', alignItems:'center', gap:8, pointerEvents:'none' }}>
-                  <div style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:8, padding:'5px 10px', fontSize:11, fontWeight:600, color:'var(--text-tertiary)', display:'flex', alignItems:'center', gap:6, pointerEvents:'auto' }}>
-                    {zoomMode && (
-                      <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize:15 }}>info</span>
-                        🔍 Z-ZOOM — drag a rectangle
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ flex:1 }} />
-                  {/* Zoom controls */}
-                  <button key="zo" style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:6, padding:'4px 7px', cursor:'pointer', fontSize:11, color:'var(--text-tertiary)', display:'flex', alignItems:'center', pointerEvents:'auto' }}
-                    onClick={() => zoomOut()}>
-                    <span className="material-symbols-outlined" style={{ fontSize:15 }}>zoom_out</span>
-                  </button>
-                  <span key="pct" style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:600, color:'var(--text-tertiary)', pointerEvents:'auto' }}>
-                    {Math.round(scale * 100)}%
-                  </span>
-                  <button key="zi" style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:6, padding:'4px 7px', cursor:'pointer', fontSize:11, color:'var(--text-tertiary)', display:'flex', alignItems:'center', pointerEvents:'auto' }}
-                    onClick={() => zoomIn()}>
-                    <span className="material-symbols-outlined" style={{ fontSize:15 }}>zoom_in</span>
-                  </button>
-                  <button key="fit" style={{ background:'var(--bg-app)', border:'1px solid var(--border-default)', borderRadius:6, padding:'4px 7px', cursor:'pointer', fontSize:11, color:'var(--text-tertiary)', display:'flex', alignItems:'center', pointerEvents:'auto' }}
-                    onClick={() => resetTransform()}>
-                    <span className="material-symbols-outlined" style={{ fontSize:15 }}>fit_screen</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Pan/zoom content */}
-              <TransformComponent
-                wrapperStyle={{ width: '100%', height: '100%' }}
-                contentStyle={{ width: contentSize.width + 'px', height: contentSize.height + 'px' }}
-              >
-                {graph && (
-                  <>
-                    <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none', overflow:'visible' }}>
-                      <defs>
-                        {[['gray','#94a3b8'],['red','#ef4444'],['amber','#f59e0b']].map(([id,fill]) => (
-                          <marker key={id as string} id={`arr-${id}`} markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
-                            <path d="M0,0 L7,3.5 L0,7 z" fill={fill as string} />
-                          </marker>
-                        ))}
-                      </defs>
-                      {renderEdges()}
-                    </svg>
-                    {nodes.map(n => (
-                      <NodeCard key={n.id} node={n}
-                        selected={selected===n.id}
-                        status={nodeStatus[n.id]??'idle'}
-                        riskReasons={riskMap[n.id]??[]}
-                        onClick={() => setSelected(s => s===n.id ? null : n.id)}
-                      />
-                    ))}
-                  </>
-                )}
-              </TransformComponent>
-            </>
-          )}
-        </TransformWrapper>
-
-        {/* Loading overlay */}
-        {analyzing && (
-          <div style={{ position:'absolute', inset:0, background:'rgba(248,250,252,0.92)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, zIndex:30 }}>
-            <div style={{ position:'relative', width:56, height:56 }}>
-              <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'4px solid var(--border-default)' }} />
-              <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'4px solid #f97316', borderTopColor:'transparent', animation:'spin 1s linear infinite' }} />
-              <span className="material-symbols-outlined" style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, color:'#f97316' }}>account_tree</span>
+        <Background color="#e2e8f0" gap={20} size={1} />
+        <Controls
+          style={{
+            background: 'white',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          }}
+        />
+        <MiniMap
+          style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8 }}
+          nodeColor={n => getNodeStyle((n as any).nodeType ?? 'call').border}
+        />
+        {rfNodes.length === 0 && (
+          <Panel position="top-center">
+            <div style={{
+              background: 'white',
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: '12px 20px',
+              fontSize: 13,
+              color: '#94a3b8',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>account_tree</span>
+              No flow data — click Analyze to generate
             </div>
-            <p style={{ fontSize:13, fontWeight:600, color:'var(--text-tertiary)' }}>Building flow graph…</p>
-          </div>
+          </Panel>
         )}
+      </ReactFlow>
 
-        {/* Empty state overlay */}
-        {!analyzing && !graph && (
-          <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, zIndex:30 }}>
-            <span className="material-symbols-outlined" style={{ fontSize:52, color:'var(--border-default)' }}>account_tree</span>
-            <p style={{ fontSize:13, fontWeight:600, color:'var(--text-muted)' }}>
-              {sourceTab ? `Generating flow for ${sourceTab.name}…` : 'No source file open'}
-            </p>
-            {sourceTab && (
-              <button onClick={analyze} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 18px', borderRadius:20, background:'var(--text-primary)', color:'var(--bg-app)', border:'none', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-                <span className="material-symbols-outlined" style={{ fontSize:15 }}>account_tree</span>Generate Flow
-              </button>
-            )}
-          </div>
-        )}
+      <OutputPanel result={runResult} simResult={simResult} onClose={onCloseOutput} />
+    </div>
+  );
+};
 
-        {/* Z-zoom rectangle overlay */}
-        {zoomRect && zoomRect.w > 4 && zoomRect.h > 4 && (
-          <div style={{ position:'absolute', left:zoomRect.x, top:zoomRect.y, width:zoomRect.w, height:zoomRect.h,
-            border:'2px solid #f97316', background:'rgba(249,115,22,0.06)', pointerEvents:'none', zIndex:40,
-            borderRadius:3, boxShadow:'0 0 0 1px rgba(249,115,22,0.3)' }} />
-        )}
+// ── Main FlowView component ───────────────────────────────────────────────────
 
-        <div style={{ position:'absolute', bottom:10, left:12, fontSize:10, color:'var(--text-muted)', pointerEvents:'none' }}>
-          Drag to pan · Scroll to zoom · Hold Z + drag to box-zoom
-        </div>
+export interface FlowViewProps {
+  flowTab: Tab;
+}
+
+export const FlowView: React.FC<FlowViewProps> = ({ flowTab }) => {
+  const [rfNodes,    setRfNodes]    = useState<RFNode[]>([]);
+  const [rfEdges,    setRfEdges]    = useState<RFEdge[]>([]);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
+  const [simResult,  setSimResult]  = useState<SimulationResult | null>(null);
+  const [runResult,  setRunResult]  = useState<RunResult | null>(null);
+  const [mode,       setMode]       = useState<'execution' | 'simulation' | null>(null);
+  const abortRef = useRef(false);
+
+  // Analyze: call IPC analyze-flow
+  const handleAnalyze = useCallback(async () => {
+    if (!flowTab.content && !flowTab.path) return;
+    setLoading(true);
+    setError(null);
+    setSimResult(null);
+    setRunResult(null);
+    abortRef.current = false;
+
+    try {
+      const result = await (window as any).electron?.ipcRenderer?.invoke('analyze-flow', {
+        code:        flowTab.content ?? '',
+        filePath:    flowTab.path ?? null,
+        projectRoot: flowTab.projectRoot ?? null,
+      });
+      if (abortRef.current) return;
+      if (result?.error) { setError(result.error); return; }
+      setRfNodes(result?.nodes ?? []);
+      setRfEdges(result?.edges ?? []);
+    } catch (e: any) {
+      setError(e?.message ?? 'Unknown error');
+    } finally {
+      if (!abortRef.current) setLoading(false);
+    }
+  }, [flowTab]);
+
+  // Detect run mode
+  const detectMode = useCallback(async () => {
+    const result = await (window as any).electron?.ipcRenderer?.invoke('flow:detect-mode', {
+      language: flowTab.language,
+      filePath: flowTab.path,
+    });
+    setMode(result?.mode ?? 'simulation');
+    return result?.mode ?? 'simulation';
+  }, [flowTab]);
+
+  // Run or Simulate
+  const handleRun = useCallback(async () => {
+    setSimResult(null);
+    setRunResult(null);
+    const detectedMode = await detectMode();
+
+    if (detectedMode === 'execution') {
+      setLoading(true);
+      try {
+        const result = await (window as any).electron?.ipcRenderer?.invoke('flow:run', {
+          code:     flowTab.content ?? '',
+          language: flowTab.language,
+          filePath: flowTab.path,
+        });
+        setRunResult(result);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setLoading(true);
+      try {
+        const result = await (window as any).electron?.ipcRenderer?.invoke('flow:simulate', {
+          code:     flowTab.content ?? '',
+          language: flowTab.language,
+          nodes:    rfNodes,
+        });
+        setSimResult(result);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [detectMode, flowTab, rfNodes]);
+
+  // Save / Load on mount
+  useEffect(() => {
+    if (!flowTab.fileHash) return;
+    (window as any).electron?.ipcRenderer?.invoke('load-flow', flowTab.fileHash).then((saved: any) => {
+      if (saved?.nodes?.length) {
+        setRfNodes(saved.nodes);
+        setRfEdges(saved.edges ?? []);
+      }
+    });
+  }, [flowTab.fileHash]);
+
+  const handleSave = useCallback(async () => {
+    if (!flowTab.fileHash) return;
+    await (window as any).electron?.ipcRenderer?.invoke('save-flow', flowTab.fileHash, {
+      nodes: rfNodes,
+      edges: rfEdges,
+    });
+  }, [flowTab.fileHash, rfNodes, rfEdges]);
+
+  const runLabel = mode === 'execution' ? 'Run' : 'Simulate';
+  const runIcon  = mode === 'execution' ? 'play_arrow' : 'psychology';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+
+      {/* ── Toolbar ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '5px 10px',
+        borderBottom: '1px solid #e2e8f0',
+        background: '#ffffff',
+        flexShrink: 0,
+      }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#64748b' }}>account_tree</span>
+        <span style={{ fontSize: 12, color: '#475569', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {flowTab.name}
+        </span>
+
+        <button
+          onClick={handleAnalyze}
+          disabled={loading}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '3px 10px',
+            fontSize: 11, fontWeight: 600,
+            background: loading ? '#f1f5f9' : '#6366f1',
+            color: loading ? '#94a3b8' : 'white',
+            border: 'none', borderRadius: 6, cursor: loading ? 'not-allowed' : 'pointer',
+            transition: 'background 0.15s',
+          }}
+        >
+          {loading
+            ? <><span className="material-symbols-outlined" style={{ fontSize: 13, animation: 'spin 1s linear infinite' }}>progress_activity</span> Analyzing…</>
+            : <><span className="material-symbols-outlined" style={{ fontSize: 13 }}>auto_fix_high</span> Analyze</>
+          }
+        </button>
+
+        <button
+          onClick={handleRun}
+          disabled={loading || rfNodes.length === 0}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '3px 10px',
+            fontSize: 11, fontWeight: 600,
+            background: rfNodes.length === 0 ? '#f1f5f9' : '#0ea5e9',
+            color: rfNodes.length === 0 ? '#94a3b8' : 'white',
+            border: 'none', borderRadius: 6, cursor: (loading || rfNodes.length === 0) ? 'not-allowed' : 'pointer',
+            transition: 'background 0.15s',
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 13 }}>{runIcon}</span>
+          {runLabel}
+        </button>
+
+        <button
+          onClick={handleSave}
+          disabled={rfNodes.length === 0}
+          title="Save layout"
+          style={{
+            display: 'flex', alignItems: 'center',
+            padding: '3px 7px',
+            background: 'none', border: '1px solid #e2e8f0',
+            borderRadius: 6, cursor: rfNodes.length === 0 ? 'not-allowed' : 'pointer',
+            color: '#64748b',
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 13 }}>save</span>
+        </button>
       </div>
 
-      <RightPanel
-        mode={playMode} running={running} logs={logs} stats={stats}
-        onPlay={handlePlay} onReset={handleReset} onStop={handleStop} onRegenerate={handleRegenerate}
-      />
+      {/* ── Error banner ── */}
+      {error && (
+        <div style={{
+          padding: '7px 12px',
+          background: '#fff1f2',
+          borderBottom: '1px solid #fecaca',
+          fontSize: 11,
+          color: '#dc2626',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          flexShrink: 0,
+        }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>error_outline</span>
+          {error}
+          <button
+            onClick={() => setError(null)}
+            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626' }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>close</span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Canvas ── */}
+      <ReactFlowProvider>
+        <FlowCanvas
+          flowTab={flowTab}
+          rfNodes={rfNodes}
+          rfEdges={rfEdges}
+          simResult={simResult}
+          runResult={runResult}
+          onCloseOutput={() => { setRunResult(null); setSimResult(null); }}
+        />
+      </ReactFlowProvider>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 };

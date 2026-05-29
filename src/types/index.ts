@@ -16,6 +16,8 @@ export interface Tab {
   savedContent?: string;
   tabType?: 'file' | 'flow';   // 'untitled' is not allowed – untitled files are still 'file'
   flowSourceTabId?: string;
+  fileHash?: string;       
+  projectRoot?: string;    
 }
 
 export interface HardwareInfo {
@@ -133,4 +135,4 @@ export type AppAction =
   | { type: 'UPDATE_TAB_LANGUAGE'; id: string; language: string }
   | { type: 'TOGGLE_CHAT_PANEL' }
   | { type: 'TOGGLE_HISTORY_PANEL' }
-;
+  ;

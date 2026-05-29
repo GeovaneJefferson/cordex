@@ -128,47 +128,85 @@ STRICT RULES — READ CAREFULLY:
 8. Max 14 nodes. Group fine-grained steps into meaningful blocks.
 9. Every function called must be represented by its call, NOT the import that brought it in.
 10. Output must be pure JSON with NO trailing commas, NO comments, and all keys must be double-quoted.
+11. Escape any double-quotes inside string values (\\\"). Keep descriptions under 80 characters and avoid line breaks.
 ${manifestSection}
 Return ONLY valid JSON, no markdown, no explanation:
 {"nodes":[{"id":"string","type":"string","label":"string","description":"string","line":0}],"edges":[{"source":"string","target":"string","label":"string"}]}`
 }
 
-/**
- * Try to repair malformed JSON from an AI response.
- * Handles common issues: trailing commas, unquoted keys, missing closing braces.
- * Returns a clean object or throws if unrecoverable.
- */
-function safeJsonParse(raw) {
-  // Remove trailing commas before } or ]
-  let cleaned = raw.replace(/,(\s*[}\]])/g, '$1');
-  // Ensure keys are double-quoted (simple heuristic)
-  cleaned = cleaned.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3');
-  try {
-    return JSON.parse(cleaned);
-  } catch (e1) {
-    // Balance braces/brackets
-    let openBraces = 0, openBrackets = 0;
-    for (const ch of cleaned) {
-      if (ch === '{') openBraces++;
-      else if (ch === '}') openBraces--;
-      else if (ch === '[') openBrackets++;
-      else if (ch === ']') openBrackets--;
-    }
-    if (openBraces > 0) cleaned += '}'.repeat(openBraces);
-    if (openBrackets > 0) cleaned += ']'.repeat(openBrackets);
-    try {
-      return JSON.parse(cleaned);
-    } catch (e2) {
-      // Fallback: extract the largest valid JSON object
-      const matches = cleaned.match(/\{(?:[^{}]|(?:\{[^{}]*\}))*\}/g);
-      if (matches) {
-        for (const m of matches.reverse()) {
-          try { return JSON.parse(m); } catch {}
-        }
+// ── Ultra‑resilient JSON extraction ─────────────────────────────────────────
+function longestValidJsonSubstring(s) {
+  let best = null;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '{') {
+      let depth = 1;
+      let j = i + 1;
+      while (j < s.length && depth > 0) {
+        if (s[j] === '{') depth++;
+        else if (s[j] === '}') depth--;
+        j++;
       }
-      throw e2;
+      if (depth === 0) {
+        const candidate = s.substring(i, j);
+        try {
+          const parsed = JSON.parse(candidate);
+          if (best === null || JSON.stringify(parsed).length > JSON.stringify(best).length) {
+            best = parsed;
+          }
+        } catch { }
+      }
     }
   }
+  if (best !== null) return best;
+  throw new Error('No valid JSON object found');
+}
+
+function robustJsonExtract(raw) {
+  // Grab the outermost { … } block
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end === -1 || start >= end) {
+    throw new Error('No braces found in response');
+  }
+  let jsonStr = raw.slice(start, end + 1);
+
+  // Remove common cruft
+  jsonStr = jsonStr
+    .replace(/\/\/.*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\n/g, ' ')
+    .replace(/\t/g, ' ')
+    .replace(/\r/g, '');
+
+  const attempts = [
+    () => JSON.parse(jsonStr),
+    () => JSON.parse(jsonStr.replace(/,(\s*[}\]])/g, '$1')),
+    () => JSON.parse(jsonStr.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3')),
+    () => {
+      let balanced = jsonStr;
+      let openBraces = 0, openBrackets = 0;
+      for (const ch of balanced) {
+        if (ch === '{') openBraces++;
+        else if (ch === '}') openBraces--;
+        else if (ch === '[') openBrackets++;
+        else if (ch === ']') openBrackets--;
+      }
+      if (openBraces > 0) balanced += '}'.repeat(openBraces);
+      if (openBrackets > 0) balanced += ']'.repeat(openBrackets);
+      return JSON.parse(balanced);
+    },
+    () => longestValidJsonSubstring(jsonStr),
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      return attempt();
+    } catch (e) {
+      // continue to next strategy
+    }
+  }
+
+  throw new Error('JSON could not be repaired');
 }
 
 // ── IPC Handlers ──────────────────────────────────────────────────────────────
@@ -201,7 +239,7 @@ module.exports = function () {
         systemPrompt,
         prompt: `Code to analyze:\n\`\`\`\n${code.slice(0, 8000)}\n\`\`\``,
         temperature: 0,
-        num_predict: 2048,
+        num_predict: 8192,
         stream: false,
       })
 
@@ -214,14 +252,16 @@ module.exports = function () {
         .replace(/```/gi, '')
         .trim()
 
-      const jsonStart = raw.indexOf('{')
-      const jsonEnd = raw.lastIndexOf('}')
-      if (jsonStart === -1 || jsonEnd === -1) {
-        console.error('[analyze-flow] Raw response:', raw)
-        throw new Error('No JSON found in response.')
+      console.log('[analyze-flow] RAW AI response (first 500 chars):', raw.slice(0, 500));
+      let flowData;
+      try {
+        flowData = robustJsonExtract(raw);
+        console.log('[analyze-flow] Extraction succeeded.');
+      } catch (err) {
+        console.error('[analyze-flow] robustJsonExtract FAILED:', err.message);
+        return { nodes: [], edges: [], error: 'AI returned unparseable JSON. Try regenerating.' };
       }
-      // ✅ FIX: use safeJsonParse instead of raw JSON.parse
-      const flowData = safeJsonParse(raw.slice(jsonStart, jsonEnd + 1))
+
       return buildReactFlowGraph(flowData)
     } catch (err) {
       console.error('[analyze-flow] Error:', err.message)
@@ -253,7 +293,6 @@ module.exports = function () {
   })
 
   // ── flow:detect-mode ─────────────────────────────────────────────────────────
-  // Decides EXECUTION MODE vs SIMULATION MODE based on language + runtime availability.
   ipcMain.handle('flow:detect-mode', async (_ev, { language, filePath }) => {
     const lang = (language || detectLangFromPath(filePath || '')).toLowerCase()
     const executable = EXECUTABLE_LANGS.has(lang)
@@ -266,7 +305,6 @@ module.exports = function () {
   })
 
   // ── flow:run ─────────────────────────────────────────────────────────────────
-  // Runs code in an isolated subprocess, captures stdout/stderr/exitCode.
   ipcMain.handle('flow:run', async (_ev, { code, language, filePath, timeout = 12000 }) => {
     const lang = (language || detectLangFromPath(filePath || '')).toLowerCase()
     try {
@@ -277,7 +315,6 @@ module.exports = function () {
   })
 
   // ── flow:simulate ────────────────────────────────────────────────────────────
-  // Static analysis: predicts execution path, flags risky nodes.
   ipcMain.handle('flow:simulate', async (_ev, { code, language, nodes }) => {
     const lang = (language || '').toLowerCase()
     try {
@@ -297,7 +334,6 @@ const os = require('os')
 const EXECUTABLE_LANGS = new Set(['python', 'javascript', 'typescript', 'node', 'cpp', 'c', 'cjs', 'mjs'])
 const EXT_TO_LANG = { py: 'python', js: 'javascript', cjs: 'javascript', mjs: 'javascript', ts: 'typescript', tsx: 'typescript', cpp: 'cpp', cc: 'cpp', c: 'c' }
 
-// Patterns that indicate a real error even when exit code is 0 (e.g. caught exceptions logged to stderr)
 const STDERR_ERROR_RE = /(?:Error|Exception|Traceback|CRITICAL|FATAL|NameError|TypeError|ValueError|AttributeError|ImportError|KeyError|IndexError|RuntimeError|PermissionError)\b/i
 
 function detectLangFromPath(filePath) {
@@ -305,7 +341,6 @@ function detectLangFromPath(filePath) {
   return EXT_TO_LANG[ext] || ext || 'unknown'
 }
 
-// Quick runtime availability check
 function checkRuntime(lang) {
   const cmdMap = {
     python: ['python3', '--version'],
@@ -324,7 +359,6 @@ function checkRuntime(lang) {
   })
 }
 
-// Subprocess runner with timeout + full output capture
 function runProcess(cmd, args, timeout) {
   return new Promise(resolve => {
     let stdout = '', stderr = ''
@@ -358,7 +392,6 @@ function runProcess(cmd, args, timeout) {
   })
 }
 
-// Extract the first error line number from a stack trace
 function extractErrorLine(stderr, lang) {
   if (!stderr) return null
   const pats = {
@@ -375,7 +408,6 @@ function extractErrorLine(stderr, lang) {
   return null
 }
 
-// Main execution entry point — writes to temp file, runs, cleans up
 async function executeCode(code, lang, timeout = 12000) {
   const extMap = { python: '.py', javascript: '.js', typescript: '.ts', cpp: '.cpp', c: '.c' }
   const ext = extMap[lang] ?? '.txt'
@@ -390,7 +422,6 @@ async function executeCode(code, lang, timeout = 12000) {
     } else if (lang === 'javascript') {
       result = await runProcess('node', [tmpFile], timeout)
     } else if (lang === 'typescript') {
-      // Try tsx (fast), fall back to ts-node
       result = await runProcess('npx', ['--yes', 'tsx', tmpFile], timeout)
       if (!result.success && result.stderr.includes('npx')) {
         result = await runProcess('node', ['--loader', 'ts-node/esm', tmpFile], timeout)
@@ -498,7 +529,7 @@ function topoOrder(nodes, edges) {
 function simulateExecution(code, nodes, lang) {
   const lines = code.split('\n')
   const lineMap = buildLineMap(nodes, lines)
-  const ordered = topoOrder(nodes, []) // fallback
+  const ordered = topoOrder(nodes, [])
 
   const executedNodes = []
   const riskNodes = []

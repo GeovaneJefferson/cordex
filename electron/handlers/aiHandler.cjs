@@ -93,7 +93,7 @@ module.exports = function (mainWindow) {
         prompt,
         stream: false,
         temperature: 0,
-        num_predict: 512   // adjust as needed
+        num_predict: 8192   // adjust as needed
       })
 
       const markdown = (await extractText(res)).trim()
@@ -108,7 +108,7 @@ module.exports = function (mainWindow) {
     const model = settings.analysisModel
     const prompt = `Error in file "${filePath}" at line ${line} (column ${column || 1}):\n${errorMessage}\n\nCode:\n\`\`\`\n${codeSnippet}\n\`\`\`\n\nExplain the error in one short sentence, then provide the corrected code block.\nReturn ONLY valid JSON: {"explanation": "...", "fixedCode": "..."}.`
     try {
-      const res = await llamaGenerate({ model, systemPrompt: 'You are an expert developer. Return only valid JSON.', prompt, stream: false, temperature: 0.1, num_predict: 2048 })
+      const res = await llamaGenerate({ model, systemPrompt: 'You are an expert developer. Return only valid JSON.', prompt, stream: false, temperature: 0.1, num_predict: 8192 })
       const response = (await extractText(res)).trim()
       const jsonMatch = response.match(/\{[\s\S]*"explanation"[\s\S]*\}/)
       if (!jsonMatch) throw new Error('No JSON found')
@@ -117,82 +117,133 @@ module.exports = function (mainWindow) {
     } catch (err) { return { ok: false, error: err.message } }
   })
 
-  // ── Bug Fix / Improve: plain-text structured format (reliable, no JSON) ──
+  // ── Bug Fix / Improve: systematic TODO + FIXED_CODE ───────────────
   ipcMain.handle('ai:bug-fix-code', async (_ev, { code, filePath, mode, isSelection }) => {
-    const settings = loadSettings()
-    const model = settings.analysisModel
-    const isImprove = mode === 'improve'
+    const settings = loadSettings();
+    const model = settings.analysisModel;
+    const isImprove = mode === 'improve';
 
+    // ── System prompts ──────────────────────────────────────────────
+    const bugfixSystemPrompt = `You are a systematic bug‑fixer. Follow this process exactly:
+
+    1. Output a numbered TODO list of **every bug** in the code. Include: missing imports, typos, undefined variables, unsafe calls, wrong API usage, logic errors, scope mistakes.
+    2. After the list, output the fully corrected code under "FIXED_CODE:".
+
+    RULES:
+    - Only change what is broken; do NOT refactor or alter working logic, data structures, or behaviour.
+    - If the code uses "defaultdict(int)", keep it exactly. Do NOT replace it with "Counter" or anything else.
+    - Preserve all comments, formatting, and structure unless they contain a bug.
+    - If no bugs exist, output only "NO BUGS" and then the unchanged code.
+
+    FORMAT:
+    TODO:
+    1. <bug>
+    2. <bug>
+    ...
+    FIXED_CODE:
+    \`\`\`<language>
+    <complete corrected code>
+    \`\`\`
+    `;
+
+    const improveSystemPrompt = `You are an expert code reviewer focused on clean code and best practices. Refactor the code for readability, performance, and maintainability without changing its external behaviour. Preserve the overall logic.`;
+
+    // ── User prompt ─────────────────────────────────────────────────
     const instruction = isImprove
-      ? 'Refactor and improve this code for better readability, performance, and best practices.'
-      : 'Find and fix all bugs, errors, and issues in this code.'
+      ? 'Refactor this code for better readability, performance, and best practices.'
+      : 'Find and fix all bugs. Only change what is broken; do not alter working logic.';
 
-    const systemPrompt = isImprove
-      ? 'You are an expert code reviewer focused on clean code and best practices. Be precise and concise.'
-      : 'You are an expert debugger. Identify and fix all bugs in the provided code. Be precise and concise.'
-
-    const returnScope = isSelection
-      ? 'the corrected code selection ONLY, preserving indentation and structure. Do not add imports or unrelated code.'
-      : 'complete corrected code — full file, no omissions.'
+    const scopeNote = isSelection
+      ? 'Return the corrected code selection ONLY, preserving indentation. Do not add or remove imports unless the selection itself requires them (e.g. a missing import inside the selection).'
+      : 'Return the complete corrected file. Ensure all necessary imports are present.';
 
     const prompt = [
       instruction,
       '',
-      `${isSelection ? 'CODE SELECTION' : 'File'}: ${filePath || 'unknown'}`,
-      '\`\`\`',
+      `File: ${filePath || 'unknown'}`,
+      '```',
       code,
-      '\`\`\`',
+      '```',
       '',
-      isSelection
-        ? 'Important: This is a code selection. Return ONLY the corrected selection. Do not add imports, remove imports, or modify code outside the selected region.'
-        : 'Important: Return corrected full file code only. Do not omit or invent sections.',
+      scopeNote,
       '',
-      'Respond using EXACTLY this format (do not deviate):',
-      'EXPLANATION:',
-      `<write 2-4 sentences describing what was ${isImprove ? 'improved' : 'wrong and what was fixed'}>`,
-      '',
-      'FIXED_CODE:',
-      '\`\`\`',
-      `${returnScope}`,
-      '\`\`\`',
+      // For improve mode we keep the old explanation format; for fix we rely on the TODO+CODE
+      isImprove
+        ? `Respond with:\nEXPLANATION:\n<2-4 sentences>\n\nFIXED_CODE:\n\`\`\`\n<refactored code>\n\`\`\``
+        : 'Follow the systematic TODO + FIXED_CODE format exactly as described in the system prompt.'
     ].join('\n');
-    
+
+    // ── Call model ──────────────────────────────────────────────────
     try {
       const res = await llamaGenerate({
         model,
-        systemPrompt,
+        systemPrompt: isImprove ? improveSystemPrompt : bugfixSystemPrompt,
         prompt,
         stream: false,
         temperature: 0.1,
-        num_predict: 8192,
-      })
-      const response = (await extractText(res)).trim()
-      console.log('[aiHandler] bug-fix-code raw response length:', response.length)
+        num_predict: 8192,   // enough for large files; bump to 16384 if needed
+      });
 
-      const explMatch = response.match(/EXPLANATION:\s*([\s\S]*?)(?=\n\s*FIXED_CODE:|$)/)
-      const explanation = explMatch ? explMatch[1].trim() : ''
+      const response = (await extractText(res)).trim();
 
+      // ── Extract TODO list (only for bug‑fix mode) ─────────────────
+      let todoList = [];
+      let explanation = '';
+
+      if (!isImprove) {
+        const todoMatch = response.match(/TODO:\s*([\s\S]*?)(?=\n\s*FIXED_CODE:|$)/i);
+        if (todoMatch) {
+          const raw = todoMatch[1].trim();
+          todoList = raw.split('\n')
+            .filter(line => /^\d+[\.\)]\s/.test(line.trim()))
+            .map(line => line.replace(/^\d+[\.\)]\s*/, '').trim());
+        }
+      }
+
+      // ── Extract explanation (fallback for improve or old format) ──
+      const explMatch = response.match(/EXPLANATION:\s*([\s\S]*?)(?=\n\s*(?:TODO:|FIXED_CODE:|$))/i);
+      if (explMatch) {
+        explanation = explMatch[1].trim();
+      } else {
+        // Use first line(s) as explanation if no structured format found
+        const firstLine = response.split('\n')[0]?.replace(/^[#\s*-]+/, '').trim() || '';
+        explanation = firstLine || 'Bugs fixed.';
+      }
+
+      // ── Extract fixed code ─────────────────────────────────────────
       const codeMatch =
-        response.match(/FIXED_CODE:\s*\`\`\`[\w]*\n([\s\S]*?)\`\`\`/) ||
-        response.match(/FIXED_CODE:\s*\`\`\`([\s\S]*?)\`\`\`/)         ||
-        response.match(/FIXED_CODE:\s*\n([\s\S]+)$/)
+        response.match(/FIXED_CODE:\s*```[\w]*\n([\s\S]*?)```/i) ||
+        response.match(/FIXED_CODE:\s*```([\s\S]*?)```/i) ||
+        response.match(/FIXED_CODE:\s*\n([\s\S]+)$/i);
 
-      const fixedCode = codeMatch ? codeMatch[1].trim() : ''
+      let fixedCode = codeMatch ? codeMatch[1].trim() : '';
 
-      if (!explanation && !fixedCode) {
-        return { ok: false, error: 'Model did not follow the expected format. Please try again.' }
+      // Fallback: if no FIXED_CODE block but we have a TODO, try to extract code block anywhere
+      if (!fixedCode) {
+        const codeBlockMatch = response.match(/```[\w]*\n([\s\S]*?)```/g);
+        if (codeBlockMatch && codeBlockMatch.length >= 1) {
+          // The last code block is probably the fix
+          const lastBlock = codeBlockMatch[codeBlockMatch.length - 1];
+          const inner = lastBlock.replace(/```[\w]*\n/, '').replace(/```$/, '');
+          fixedCode = inner.trim();
+        }
+      }
+
+      if (!fixedCode) {
+        return { ok: false, error: 'Model did not provide a FIXED_CODE block. Please try again.' };
       }
 
       return {
         ok: true,
+        todo: todoList.length > 0 ? todoList : null,
         explanation: explanation || 'Analysis complete.',
-        fixedCode:   fixedCode   || code,
-      }
+        fixedCode: fixedCode,
+      };
     } catch (err) {
-      console.error('[aiHandler] bug-fix-code error:', err.message)
-      return { ok: false, error: err.message }
+      console.error('[aiHandler] bug-fix-code error:', err.message);
+      return { ok: false, error: err.message };
     }
-  })
+  });
 
   // ── AI‑powered FULL project documentation generator ────────
   ipcMain.handle('ai:document-project', async (ev, { projectRoot, model }) => {
@@ -203,7 +254,7 @@ module.exports = function (mainWindow) {
       // Build a complete summary of every source file
       const summary = await buildFullProjectSummary(projectRoot)
       const systemPrompt = `You are a senior technical writer.You are given the COMPLETE source code and file tree of a real software project.Write a PROJECT_DOCS.md file using ONLY the information provided.Do NOT invent any names, do NOT use placeholders like "Your Project Name".Describe the actual project.Include sections: project name / purpose, tech stack, directory layout, key components(describe every file), architecture, AI features(if any), UI conventions(if any), coding rules(from config files), build commands, and any special notes.Output ONLY raw Markdown.`
-      const prompt = `Write the PROJECT_DOCS.md for this project.\n\nPROJECT SUMMARY: \n${ summary } `
+      const prompt = `Write the PROJECT_DOCS.md for this project.\n\nPROJECT SUMMARY: \n${summary} `
       const res = await llamaGenerate({
         model: useModel,
         systemPrompt,
@@ -238,25 +289,26 @@ async function buildFullProjectSummary(root) {
   for (const ent of rootEntries) {
     if (ent.isFile() && isConfigFile(ent.name)) {
       const p = path.join(root, ent.name)
-      try { summary += `### ${ ent.name } \n\`\`\`\n${(await fs.readFile(p, 'utf8')).slice(0, 2000)}\n\`\`\`\n\n`
-  } catch { }
-}
+      try {
+        summary += `### ${ent.name} \n\`\`\`\n${(await fs.readFile(p, 'utf8')).slice(0, 2000)}\n\`\`\`\n\n`
+      } catch { }
+    }
   }
-// Full file tree (3 levels)
-summary += '### Full File Tree (top 3 levels)\n```\n' + await generateTree(root, 3) + '\n```\n\n'
-// Every single source file (recursive, filtered)
-const allFiles = await getAllSourceFiles(root)
-for (const rel of allFiles) {
-  if (summary.length >= MAX_SUMMARY_LENGTH) break
-  const p = path.join(root, rel)
-  try {
-    const stat = fs.statSync(p)
-    if (stat.size > MAX_FILE_SIZE) { summary += `### ${rel} (too large, skipped)\n\n`; continue }
-    summary += `### ${rel}\n\`\`\`\n${await fs.readFile(p, 'utf8')}\n\`\`\`\n\n`
-  } catch { }
-}
-if (summary.length >= MAX_SUMMARY_LENGTH) summary += '\n**Note:** Summary truncated due to length limits.\n'
-return summary
+  // Full file tree (3 levels)
+  summary += '### Full File Tree (top 3 levels)\n```\n' + await generateTree(root, 3) + '\n```\n\n'
+  // Every single source file (recursive, filtered)
+  const allFiles = await getAllSourceFiles(root)
+  for (const rel of allFiles) {
+    if (summary.length >= MAX_SUMMARY_LENGTH) break
+    const p = path.join(root, rel)
+    try {
+      const stat = fs.statSync(p)
+      if (stat.size > MAX_FILE_SIZE) { summary += `### ${rel} (too large, skipped)\n\n`; continue }
+      summary += `### ${rel}\n\`\`\`\n${await fs.readFile(p, 'utf8')}\n\`\`\`\n\n`
+    } catch { }
+  }
+  if (summary.length >= MAX_SUMMARY_LENGTH) summary += '\n**Note:** Summary truncated due to length limits.\n'
+  return summary
 }
 
 async function getAllSourceFiles(root) {

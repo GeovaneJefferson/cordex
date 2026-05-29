@@ -117,7 +117,7 @@ export const TabBar: React.FC = () => {
 
   return (
     <>
-      <div className="flex h-9 border-b border-gray-100 bg-[#FAFAFA] flex-shrink-0">
+      <div className="flex h-9 border-b border-gray-100 flex-shrink-0" style={{ background: 'var(--tabbar-bg)' }}>
         {/* Scrollable tabs */}
         <div className="flex flex-1 overflow-x-auto hide-scrollbar">
           {state.tabs.map((tab: Tab) => {
@@ -143,7 +143,7 @@ export const TabBar: React.FC = () => {
                 onContextMenu={e => { e.preventDefault(); setCtxMenu({ tabId: tab.id, x: e.clientX, y: e.clientY }); }}
                 className={`relative flex items-center gap-1.5 px-3 py-1.5 min-w-[100px] max-w-[200px]
                   border-r border-gray-100 cursor-pointer select-none flex-shrink-0 group transition-colors duration-100
-                  ${isActive ? 'bg-white' : 'hover:bg-white/70 text-gray-500'}
+                  ${isActive ? 'bg-white' : 'hover:bg-gray-100 text-gray-500'}
                   ${isDrop ? 'border-l-2 border-l-orange-400' : ''}`}
               >
                 {isActive && <span className={`absolute top-0 left-0 right-0 h-[2px] rounded-b-sm ${isFlow ? 'bg-orange-400' : 'bg-orange-500'}`} />}

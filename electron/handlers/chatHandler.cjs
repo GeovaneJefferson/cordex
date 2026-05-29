@@ -82,7 +82,7 @@ module.exports = function(mainWindow) {
         model,
         messages: ollamaMessages,
         temperature: 0.1,
-        num_predict: 2048,
+        num_predict: 8192,
         stream: true,
         signal: controller.signal,
       })

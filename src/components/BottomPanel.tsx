@@ -393,8 +393,7 @@ const TerminalRow: React.FC<{
           onBlur={() => { onRename(tempName); setIsRenaming(false); }}
           onClick={e => e.stopPropagation()}
           className="flex-1 text-[11px] outline-none border border-orange-400 rounded px-1 min-w-0"
-          style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
-          style={{ fontSize: 11 }}
+          style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' , fontSize: 11 }}
         />
       ) : (
         <span

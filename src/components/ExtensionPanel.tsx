@@ -64,12 +64,12 @@ export const ExtensionPanel: React.FC = () => {
   const installedCount = extensions.filter(e => e.status === 'installed').length;
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'white' }}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'var(--bg-app)' }}>
       {/* Header */}
-      <div style={{ padding:'10px 12px 8px', borderBottom:'1px solid #e2e8f0', flexShrink:0 }}>
-        <div style={{ fontSize:11, fontWeight:700, color:'#0f172a', marginBottom:6 }}>
+      <div style={{ padding:'10px 12px 8px', borderBottom:'1px solid var(--border-default)', flexShrink:0 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:'var(--text-primary)', marginBottom:6 }}>
           Extensions
-          <span style={{ marginLeft:6, fontSize:9, background:'#f1f5f9', color:'#64748b',
+          <span style={{ marginLeft:6, fontSize:9, background:'var(--bg-elevated)', color:'var(--text-muted)',
             padding:'1px 6px', borderRadius:10, fontWeight:600 }}>
             {installedCount} installed
           </span>
@@ -78,7 +78,7 @@ export const ExtensionPanel: React.FC = () => {
           value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search extensions…"
           style={{ width:'100%', fontSize:11, padding:'5px 8px', borderRadius:6,
-            border:'1px solid #e2e8f0', outline:'none', background:'#f8fafc', color:'#374151' }}
+            border:'1px solid var(--border-default)', outline:'none', background:'var(--bg-elevated)', color:'var(--text-primary)' }}
         />
       </div>
 
@@ -88,7 +88,7 @@ export const ExtensionPanel: React.FC = () => {
         {grouped.map(({ cat, list }) => (
           <div key={cat}>
             <div style={{ padding:'8px 12px 3px', fontSize:9, fontWeight:700,
-              textTransform:'uppercase', letterSpacing:'0.6px', color:'#94a3b8' }}>
+              textTransform:'uppercase', letterSpacing:'0.6px', color:'var(--text-muted)' }}>
               {CAT_LABELS[cat]}
             </div>
             {list.map(ext => (
@@ -103,7 +103,7 @@ export const ExtensionPanel: React.FC = () => {
           </div>
         ))}
         {filtered.length === 0 && (
-          <div style={{ padding:'24px 12px', textAlign:'center', color:'#94a3b8', fontSize:12 }}>
+          <div style={{ padding:'24px 12px', textAlign:'center', color:'var(--text-muted)', fontSize:12 }}>
             No extensions match "{search}"
           </div>
         )}
@@ -121,12 +121,12 @@ const ExtensionRow: React.FC<{
   const isInstalled = ext.status === 'installed';
 
   return (
-    <div style={{ borderBottom:'1px solid #f1f5f9' }}>
+    <div style={{ borderBottom:'1px solid var(--border-default)' }}>
       <div
         onClick={() => setExpanded(e => !e)}
         style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'8px 12px',
           cursor:'pointer', transition:'background 0.1s' }}
-        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         {/* Icon */}
@@ -140,24 +140,24 @@ const ExtensionRow: React.FC<{
         {/* Info */}
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:1 }}>
-            <span style={{ fontSize:12, fontWeight:600, color:'#0f172a' }}>{ext.name}</span>
-            <span style={{ fontSize:9, color:'#94a3b8' }}>v{ext.version}</span>
+            <span style={{ fontSize:12, fontWeight:600, color:'var(--text-primary)' }}>{ext.name}</span>
+            <span style={{ fontSize:9, color:'var(--text-muted)' }}>v{ext.version}</span>
             {isInstalled && ext.enabled && (
-              <span style={{ fontSize:9, background:'#dcfce7', color:'#15803d',
+              <span style={{ fontSize:9, background:'rgba(16, 185, 129, 0.12)', color:'#15803d',
                 padding:'1px 5px', borderRadius:8, fontWeight:600 }}>ON</span>
             )}
             {isInstalled && !ext.enabled && (
-              <span style={{ fontSize:9, background:'#f1f5f9', color:'#64748b',
+              <span style={{ fontSize:9, background:'var(--bg-elevated)', color:'var(--text-muted)',
                 padding:'1px 5px', borderRadius:8, fontWeight:600 }}>OFF</span>
             )}
           </div>
-          <div style={{ fontSize:10, color:'#64748b', lineHeight:1.5,
+          <div style={{ fontSize:10, color:'var(--text-muted)', lineHeight:1.5,
             overflow:'hidden', display:'-webkit-box',
             WebkitLineClamp: expanded ? 999 : 3,
             WebkitBoxOrient:'vertical' }}>
             {ext.description}
           </div>
-          <div style={{ fontSize:9, color:'#94a3b8', marginTop:1 }}>by {ext.author}</div>
+          <div style={{ fontSize:9, color:'var(--text-muted)', marginTop:1 }}>by {ext.author}</div>
         </div>
 
         {/* Action */}
@@ -166,9 +166,9 @@ const ExtensionRow: React.FC<{
             <div style={{ display:'flex', gap:4 }}>
               <button onClick={onToggle} style={{
                 fontSize:10, padding:'3px 8px', borderRadius:5, cursor:'pointer', fontWeight:600,
-                background: ext.enabled ? '#fee2e2' : '#dcfce7',
+                background: ext.enabled ? 'rgba(254, 226, 226, 0.8)' : 'rgba(220, 248, 231, 0.85)',
                 color:      ext.enabled ? '#dc2626' : '#16a34a',
-                border: `1px solid ${ext.enabled ? '#fca5a5' : '#86efac'}`,
+                border: `1px solid ${ext.enabled ? 'rgba(252, 165, 165, 0.8)' : 'rgba(134, 239, 172, 0.8)'}`,
               }}>
                 {ext.enabled ? 'Disable' : 'Enable'}
               </button>
@@ -176,8 +176,8 @@ const ExtensionRow: React.FC<{
           ) : (
             <button onClick={onInstall} disabled={isInstalling} style={{
               fontSize:10, padding:'3px 10px', borderRadius:5, cursor:'pointer', fontWeight:600,
-              background: isInstalling ? '#f1f5f9' : '#f97316',
-              color:      isInstalling ? '#94a3b8'  : 'white',
+              background: isInstalling ? 'var(--bg-elevated)' : '#f97316',
+              color:      isInstalling ? 'var(--text-muted)'  : 'white',
               border: 'none', display:'flex', alignItems:'center', gap:4,
               opacity: isInstalling ? 0.8 : 1,
             }}>
@@ -197,7 +197,7 @@ const ExtensionRow: React.FC<{
         <div style={{ padding:'0 12px 10px 52px' }}>
           {ext.capabilities.length > 0 && (
             <div style={{ marginBottom:6 }}>
-              <div style={{ fontSize:9, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', marginBottom:4 }}>
+              <div style={{ fontSize:9, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', marginBottom:4 }}>
                 Features
               </div>
               <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
@@ -215,18 +215,18 @@ const ExtensionRow: React.FC<{
           )}
           {ext.installCommands && ext.installCommands.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize:9, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', marginBottom:4 }}>
+              <div style={{ fontSize:9, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', marginBottom:4 }}>
                 Install Commands
               </div>
-              <div style={{ background:'#0f172a', borderRadius:6, padding:'7px 10px', fontFamily:'monospace', fontSize:10, lineHeight:1.7 }}>
+              <div style={{ background:'var(--text-primary)', borderRadius:6, padding:'7px 10px', fontFamily:'monospace', fontSize:10, lineHeight:1.7 }}>
                 {ext.installCommands.map((cmd, i) => (
-                  <div key={i} style={{ color: cmd.startsWith('#') ? '#64748b' : '#86efac' }}>{cmd}</div>
+                  <div key={i} style={{ color: cmd.startsWith('#') ? 'var(--text-muted)' : '#86efac' }}>{cmd}</div>
                 ))}
               </div>
             </div>
           )}
           {ext.installNote && !ext.installCommands?.length && (
-            <div style={{ fontSize:10, color:'#64748b', background:'#f8fafc',
+            <div style={{ fontSize:10, color:'var(--text-muted)', background:'var(--bg-elevated)',
               borderRadius:5, padding:'5px 8px', fontFamily:'monospace' }}>
               ℹ {ext.installNote}
             </div>

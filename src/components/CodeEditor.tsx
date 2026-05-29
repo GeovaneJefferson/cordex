@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import * as monaco from 'monaco-editor';
+import type * as monaco from 'monaco-editor';
 import electronDts from '../electron.d.ts?raw';
 import typesDts from '../types/index.ts?raw';
 import { useAppState } from '../store/AppContext';
@@ -7,77 +7,17 @@ import { themes } from '../themes';
 import { Tab } from '../types';
 import { detectLanguage } from '../utils/fileIcons';
 
-// ── Theme registration ──────────────────────────────────────────────────
-let _themesReady = false;
-function ensureThemes() {
-  if (_themesReady) return;
-  _themesReady = true;
-  themes.forEach(t => monaco.editor.defineTheme(t.id, t.data));
-}
-
-// ── GDScript registration ───────────────────────────────────────────────
-let _gdscriptReady = false;
-function ensureGDScript() {
-  if (_gdscriptReady) return;
-  _gdscriptReady = true;
-
-  monaco.languages.register({ id: 'gdscript' });
-
-  monaco.languages.setMonarchTokensProvider('gdscript', {
-    tokenizer: {
-      root: [
-        [/^\s*#.*/, 'comment'],
-        [/\b(?:func|class|extends|return|if|elif|else|for|while|break|continue|pass|self|is|in|as|onready|on|export|signal|static|tool|extends|var|const|enum|match)\b/, 'keyword'],
-        [/\b(?:true|false|null)\b/, 'keyword'],
-        [/"(?:[^"\\]|\\.)*"/, 'string'],
-        [/'(?:[^'\\]|\\.)*'/, 'string'],
-        [/\d+\.?\d*(?:e[+-]?\d+)?/, 'number'],
-        [/[{}()\[\]]/, 'delimiter'],
-        [/[a-zA-Z_]\w*/, 'identifier'],
-        [/[+\-*/<>=!&|^~%]+/, 'operator'],
-      ],
-    },
-  });
-
-  monaco.languages.setLanguageConfiguration('gdscript', {
-    comments: { lineComment: '#' },
-    brackets: [
-      ['{', '}'],
-      ['[', ']'],
-      ['(', ')'],
-    ],
-    autoClosingPairs: [
-      { open: '{', close: '}' },
-      { open: '[', close: ']' },
-      { open: '(', close: ')' },
-      { open: '"', close: '"' },
-      { open: "'", close: "'" },
-    ],
-    surroundingPairs: [
-      { open: '{', close: '}' },
-      { open: '[', close: ']' },
-      { open: '(', close: ')' },
-      { open: '"', close: '"' },
-      { open: "'", close: "'" },
-    ],
-  });
-}
-
-// ── Monaco marker → Problems tab bridge (singleton) ────────────────────────
+let _themesReady        = false;
+let _gdscriptReady      = false;
 let _markerListenerReady = false;
-function setupMarkerListener() {
-  if (_markerListenerReady) return;
-  _markerListenerReady = true;
-  monaco.editor.onDidChangeMarkers((_uris) => {
-    const markers = monaco.editor.getModelMarkers({});
-    (window as any).__cordexMarkers = markers;
-    window.dispatchEvent(new CustomEvent('cordex:markers-changed', { detail: markers }));
-  });
-}
+let _tsDefaultsReady    = false;
+let _ghostProvider: any = null;
 
-ensureGDScript();
+// ── Per-tab model cache: tabId → ITextModel ──────────────────────────────────
+// Keeping models alive across editor re-mounts prevents the TS worker from
+// firing diagnostics against a URI that no longer exists ("inmemory://model/N").
+const _modelCache = new Map<string, monaco.editor.ITextModel>();
 
-// ── Local storage helpers ───────────────────────────────────────────────
 const THEME_KEY    = 'cordex_editor_theme';
 const FONTSIZE_KEY = 'cordex_editor_fontSize';
 
@@ -90,22 +30,19 @@ function storedFontSize() {
   return n >= 8 && n <= 28 ? n : 13;
 }
 
-// ── Component ───────────────────────────────────────────────────────────
 export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
   const { state, dispatch } = useAppState();
   const tab = state.tabs.find((t: Tab) => t.id === tabId);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const wrapperRef   = useRef<HTMLDivElement>(null);
-  const editorRef    = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const ignoreRef    = useRef(false);
-  const themeRef     = useRef(state.settings?.theme || storedTheme());
-  const fontRef      = useRef(storedFontSize());
-
-  // For integer‑pixel layout fix
+  const containerRef   = useRef<HTMLDivElement>(null);
+  const wrapperRef     = useRef<HTMLDivElement>(null);
+  const editorRef      = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const ignoreRef      = useRef(false);
+  const themeRef       = useRef(state.settings?.theme || storedTheme());
+  const fontRef        = useRef(storedFontSize());
   const [wrapperSize, setWrapperSize] = useState({ width: 0, height: 0 });
 
-  // Observe the wrapper size
+  // ── Observe wrapper size ──────────────────────────────────────────────────
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -117,7 +54,7 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
     return () => observer.disconnect();
   }, []);
 
-  // ── Font size via keyboard ──────────────────────────────────────────
+  // ── Font size via keyboard ────────────────────────────────────────────────
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -138,206 +75,296 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
     return () => window.removeEventListener('keydown', fn);
   }, []);
 
-  // ── Create editor ──────────────────────────────────────────────────
+  // ── Create / reuse editor ────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || !tab) return;
 
-    ensureThemes();
-    // Register project type declarations with Monaco so the in-browser
-    // TypeScript service recognises `CordexAPI`, `ElectronAPI`, `window.Cordex`, etc.
-    try {
-      const tsDefaults = (monaco.languages as any).typescript.typescriptDefaults;
-      tsDefaults.addExtraLib(electronDts, 'ts:electron.d.ts');
-      tsDefaults.addExtraLib(typesDts, 'ts:types/index.d.ts');
-      tsDefaults.setCompilerOptions({
-        target: monaco.languages.typescript.ScriptTarget.ES2020,
-        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-        jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
-        strict: true,
-        lib: ['es2022', 'dom'],
-      });
-    } catch (err) {
-      console.warn('Monaco TS defaults unavailable:', err);
-    }
+    let cancelled = false;
+    let localSubscriptions: monaco.IDisposable[] = [];
 
-    editorRef.current?.dispose();
-    editorRef.current = null;
+    (async () => {
+      const mon = await import('monaco-editor');
+      if (cancelled) return;
 
-    const editor = monaco.editor.create(containerRef.current, {
-      value:    tab.content,
-      language: mapLang(tab.language),
-      theme:    themeRef.current,
-      fontSize: fontRef.current,
-      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-      fontLigatures: false,            // helps with selection precision
-      lineNumbers: 'on',
-      minimap: { enabled: true },
-      scrollBeyondLastLine: false,
-      automaticLayout: true,
-      matchBrackets: 'never',          // avoid micro‑reflows while selecting
-      tabSize: 2,
-      wordWrap: 'off',
-      selectionHighlight: true,
-      occurrencesHighlight: 'singleFile',
-      renderWhitespace: 'selection',
-      cursorBlinking: 'smooth',
-      cursorSmoothCaretAnimation: 'off',  // BUG FIX: 'on' causes jumpy bottom-to-top selection
-      smoothScrolling: false,             // BUG FIX: interferes with drag selection
-      mouseWheelZoom: false,
-      fixedOverflowWidgets: true,         // keeps widgets inside editor bounds
-      scrollbar: {
-        vertical: 'auto',
-        horizontal: 'auto',
-        useShadows: false,
-        verticalScrollbarSize: 12,
-        horizontalScrollbarSize: 10,
-      },
-      dragAndDrop: false,
-      multiCursorModifier: 'alt',    // Use Alt for multi-cursor; Ctrl/Cmd+Click should go to definition
-    });
-
-    monaco.editor.setTheme(themeRef.current);
-    editorRef.current = editor;
-    (window as any).__activeEditor = editor;
-    
-    // User edits → store
-    const s1 = editor.onDidChangeModelContent(() => {
-      if (ignoreRef.current) return;
-      dispatch({ type: 'UPDATE_TAB_CONTENT', id: tabId, content: editor.getValue() });
-    });
-
-    // Cursor → status bar
-    const s2 = editor.onDidChangeCursorPosition(e => {
-      dispatch({ type: 'SET_CURSOR', line: e.position.lineNumber, col: e.position.column });
-    });
-
-    // Ctrl+S – save with Save As support
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
-      const t = state.tabs.find((x: Tab) => x.id === tabId);
-      if (!t) return;
-      const content = editor.getValue();
-
-      // BUG FIX: preserve scroll position before any async dispatch
-      const scrollTop  = editor.getScrollTop();
-      const scrollLeft = editor.getScrollLeft();
-      const restoreScroll = () => requestAnimationFrame(() => {
-        editorRef.current?.setScrollTop(scrollTop);
-        editorRef.current?.setScrollLeft(scrollLeft);
-      });
-
-      if (t.path.startsWith('untitled::') || !t.path) {
-        const newPath = await (window as any).Cordex?.fs?.saveAs?.(t.name);
-        if (!newPath) return;
-        const fileName = newPath.split('/').pop() ?? 'Untitled';
-
-        // BUG FIX: detect language from the chosen filename so Monaco
-        // reinitialises to the correct mode (e.g. 'sql', 'gdscript') and the
-        // session persists the right language string instead of 'plaintext'.
-        const newLang = detectLanguage(fileName);
-
-        dispatch({ type: 'UPDATE_TAB_PATH', id: t.id, path: newPath, name: fileName });
-        dispatch({ type: 'UPDATE_TAB_LANGUAGE', id: t.id, language: newLang });
-
-        await (window as any).Cordex?.fs?.writeFile?.(newPath, content);
-        dispatch({ type: 'MARK_TAB_SAVED', id: t.id });
-        (window as any).Cordex?.history?.save?.({ filePath: newPath, content });
-        window.dispatchEvent(new Event('cordex:history-updated'));
-        // (window as any).Cordex?.ai?.embedUpdateFile?.(newPath, content);
-        const root = (window as any).__cordexRoot ?? state.projectRoot;
-        if (root && newPath.startsWith(root)) {
-          try {
-            const result = await (window as any).Cordex?.fs?.readDir?.(root);
-            if (result?.ok) dispatch({ type: 'SET_FILE_TREE', tree: result.tree });
-          } catch (e) { console.error('Failed to refresh file tree:', e); }
-        }
-        restoreScroll();
-        return;
+      // ── One-time setup ──────────────────────────────────────────────────
+      if (!_themesReady) {
+        _themesReady = true;
+        themes.forEach(t => mon.editor.defineTheme(t.id, t.data));
       }
 
-      (window as any).Cordex?.fs?.writeFile?.(t.path, content)?.then(() => {
-        dispatch({ type: 'MARK_TAB_SAVED', id: tabId });
-        (window as any).Cordex?.history?.save?.({ filePath: t.path, content });
-        window.dispatchEvent(new Event('cordex:history-updated'));
-        // (window as any).Cordex?.ai?.embedUpdateFile?.(t.path, content);
-        restoreScroll();
-      });
-    });
+      if (!_gdscriptReady) {
+        _gdscriptReady = true;
+        mon.languages.register({ id: 'gdscript' });
+        mon.languages.setMonarchTokensProvider('gdscript', {
+          tokenizer: {
+            root: [
+              [/^\s*#.*/, 'comment'],
+              [/\b(?:func|class|extends|return|if|elif|else|for|while|break|continue|pass|self|is|in|as|onready|on|export|signal|static|tool|var|const|enum|match)\b/, 'keyword'],
+              [/\b(?:true|false|null)\b/, 'keyword'],
+              [/"(?:[^"\\]|\\.)*"/, 'string'],
+              [/'(?:[^'\\]|\\.)*'/, 'string'],
+              [/\d+\.?\d*(?:e[+-]?\d+)?/, 'number'],
+              [/[{}()\[\]]/, 'delimiter'],
+              [/[a-zA-Z_]\w*/, 'identifier'],
+              [/[+\-*/<>=!&|^~%]+/, 'operator'],
+            ],
+          },
+        });
+        mon.languages.setLanguageConfiguration('gdscript', {
+          comments: { lineComment: '#' },
+          brackets: [['{', '}'], ['[', ']'], ['(', ')']],
+          autoClosingPairs: [
+            { open: '{', close: '}' }, { open: '[', close: ']' },
+            { open: '(', close: ')' }, { open: '"', close: '"' },
+            { open: "'", close: "'" },
+          ],
+          surroundingPairs: [
+            { open: '{', close: '}' }, { open: '[', close: ']' },
+            { open: '(', close: ')' }, { open: '"', close: '"' },
+            { open: "'", close: "'" },
+          ],
+        });
+      }
 
-    // Toggle line comment
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
-      editor.getAction('editor.action.commentLine')?.run();
-    });
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Digit7, () => {
-      editor.getAction('editor.action.commentLine')?.run();
-    });
+      if (!_tsDefaultsReady) {
+        _tsDefaultsReady = true;
+        try {
+          const tsDefaults = (mon.languages as any).typescript.typescriptDefaults;
+          tsDefaults.addExtraLib(electronDts, 'ts:electron.d.ts');
+          tsDefaults.addExtraLib(typesDts, 'ts:types/index.d.ts');
+          tsDefaults.setCompilerOptions({
+            target: (mon.languages.typescript as any).ScriptTarget.ES2020,
+            moduleResolution: (mon.languages.typescript as any).ModuleResolutionKind.NodeJs,
+            jsx: (mon.languages.typescript as any).JsxEmit.ReactJSX,
+            strict: true,
+            lib: ['es2022', 'dom'],
+          });
+        } catch (err) {
+          console.warn('Monaco TS defaults unavailable:', err);
+        }
+      }
 
-    setupMarkerListener();  // ensure Monaco markers flow to Problems tab
+      if (!_markerListenerReady) {
+        _markerListenerReady = true;
+        mon.editor.onDidChangeMarkers(() => {
+          const markers = mon.editor.getModelMarkers({});
+          (window as any).__cordexMarkers = markers;
+          window.dispatchEvent(new CustomEvent('cordex:markers-changed', { detail: markers }));
+        });
+      }
 
-    // Expose getSelection for ChatPanel to use
-    (window as any).__cordexGetSelection = () => {
-      const sel = editor.getSelection();
-      if (!sel || (sel.startLineNumber === sel.endLineNumber && sel.startColumn === sel.endColumn)) return null;
-      const model = editor.getModel();
-      if (!model) return null;
-      return model.getValueInRange(sel);
-    };
+      // ── Get or create the model for this tab ────────────────────────────
+      // Reusing the same ITextModel keeps the TS worker's URI table consistent.
+      // Without this, switching tabs disposes the old model while the worker is
+      // still mid-flight, producing "Could not find source file: inmemory://model/N".
+      const lang  = mapLang(tab.language);
+      const tabUri = mon.Uri.parse(`inmemory://cordex/${tabId}`);
 
-    // Expose selection info including preview for visual feedback
-    (window as any).__cordexGetSelectionInfo = () => {
-      const sel = editor.getSelection();
-      const hasSelection = sel && !(sel.startLineNumber === sel.endLineNumber && sel.startColumn === sel.endColumn);
-      if (!hasSelection) return { hasSelection: false, preview: '', lineCount: 0, range: null };
-      const model = editor.getModel();
-      if (!model) return { hasSelection: false, preview: '', lineCount: 0, range: null };
-      const selectedText = model.getValueInRange(sel);
-      const lineCount = sel.endLineNumber - sel.startLineNumber + 1;
-      const preview = selectedText.split('\n')[0].slice(0, 60); // First line, max 60 chars
-      return {
-        hasSelection: true,
-        preview,
-        lineCount,
-        range: {
-          startLineNumber: sel.startLineNumber,
-          startColumn: sel.startColumn,
-          endLineNumber: sel.endLineNumber,
-          endColumn: sel.endColumn,
+      let model = _modelCache.get(tabId) ?? mon.editor.getModel(tabUri);
+      if (!model || model.isDisposed()) {
+        model = mon.editor.createModel(tab.content ?? '', lang, tabUri);
+        _modelCache.set(tabId, model);
+      } else {
+        // Sync content if the model already exists (e.g. after a tab switch)
+        if (model.getValue() !== (tab.content ?? '')) {
+          ignoreRef.current = true;
+          model.applyEdits([{ range: model.getFullModelRange(), text: tab.content ?? '' }]);
+          ignoreRef.current = false;
+        }
+        // Sync language if it changed (e.g. Save As to a different extension)
+        if (model.getLanguageId() !== lang) {
+          mon.editor.setModelLanguage(model, lang);
+        }
+      }
+
+      if (cancelled) return;
+
+      // ── Dispose existing editor widget, keep model alive ───────────────
+      if (editorRef.current) {
+        // Detach model BEFORE disposing the editor so the worker doesn't see
+        // a model-removed event for a URI it still has queued diagnostics for.
+        try { editorRef.current.setModel(null); } catch {}
+        try { editorRef.current.dispose(); } catch {}
+        editorRef.current = null;
+      }
+
+      const editor = mon.editor.create(containerRef.current!, {
+        model,
+        theme:    themeRef.current,
+        fontSize: fontRef.current,
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        fontLigatures: false,
+        lineNumbers: 'on',
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        matchBrackets: 'never',
+        tabSize: 2,
+        wordWrap: 'off',
+        selectionHighlight: true,
+        occurrencesHighlight: 'singleFile',
+        renderWhitespace: 'selection',
+        cursorBlinking: 'smooth',
+        cursorSmoothCaretAnimation: 'off',
+        smoothScrolling: false,
+        mouseWheelZoom: false,
+        fixedOverflowWidgets: true,
+        scrollbar: {
+          vertical: 'auto',
+          horizontal: 'auto',
+          useShadows: false,
+          verticalScrollbarSize: 12,
+          horizontalScrollbarSize: 10,
         },
+        dragAndDrop: false,
+        multiCursorModifier: 'alt',
+      });
+
+      mon.editor.setTheme(themeRef.current);
+      editorRef.current = editor;
+      (window as any).__activeEditor = editor;
+
+      // ── Ghost inline completions ────────────────────────────────────────
+      if (!_ghostProvider) {
+        _ghostProvider = mon.languages.registerInlineCompletionsProvider('*', {
+          async provideInlineCompletions(model, position, _ctx, token) {
+            const lineSoFar = model.getLineContent(position.lineNumber)
+              .slice(0, position.column - 1).trimEnd();
+            if (lineSoFar.length < 3) return { items: [] };
+            await new Promise<void>(res => setTimeout(res, 300));
+            if (token.isCancellationRequested) return { items: [] };
+            const lnBefore = Math.max(1, position.lineNumber - 40);
+            const lnAfter  = Math.min(model.getLineCount(), position.lineNumber + 5);
+            const before = model.getValueInRange({ startLineNumber: lnBefore, startColumn: 1, endLineNumber: position.lineNumber, endColumn: position.column });
+            const after  = model.getValueInRange({ startLineNumber: position.lineNumber, startColumn: position.column, endLineNumber: lnAfter, endColumn: model.getLineMaxColumn(lnAfter) });
+            try {
+              const result = await (window as any).Cordex?.ai?.autocomplete?.({ before, after, language: model.getLanguageId() });
+              if (!result?.ok || !result.text?.trim()) return { items: [] };
+              return { items: [{ insertText: result.text, range: new mon.Range(position.lineNumber, position.column, position.lineNumber, position.column) }] };
+            } catch {
+              return { items: [] };
+            }
+          },
+          disposeInlineCompletions() {},
+        });
+      }
+
+      // ── Subscriptions ───────────────────────────────────────────────────
+      const s1 = editor.onDidChangeModelContent(() => {
+        if (ignoreRef.current) return;
+        dispatch({ type: 'UPDATE_TAB_CONTENT', id: tabId, content: editor.getValue() });
+      });
+
+      const s2 = editor.onDidChangeCursorPosition(e => {
+        dispatch({ type: 'SET_CURSOR', line: e.position.lineNumber, col: e.position.column });
+      });
+
+      localSubscriptions = [s1, s2];
+
+      // ── Ctrl+S ──────────────────────────────────────────────────────────
+      editor.addCommand((mon as any).KeyMod.CtrlCmd | (mon as any).KeyCode.KeyS, async () => {
+        const t = state.tabs.find((x: Tab) => x.id === tabId);
+        if (!t) return;
+        const content = editor.getValue();
+        const scrollTop  = editor.getScrollTop();
+        const scrollLeft = editor.getScrollLeft();
+        const restoreScroll = () => requestAnimationFrame(() => {
+          editorRef.current?.setScrollTop(scrollTop);
+          editorRef.current?.setScrollLeft(scrollLeft);
+        });
+        if (t.path.startsWith('untitled::') || !t.path) {
+          const newPath = await (window as any).Cordex?.fs?.saveAs?.(t.name);
+          if (!newPath) return;
+          const fileName = newPath.split('/').pop() ?? 'Untitled';
+          const newLang  = detectLanguage(fileName);
+          dispatch({ type: 'UPDATE_TAB_PATH',     id: t.id, path: newPath, name: fileName });
+          dispatch({ type: 'UPDATE_TAB_LANGUAGE', id: t.id, language: newLang });
+          await (window as any).Cordex?.fs?.writeFile?.(newPath, content);
+          dispatch({ type: 'MARK_TAB_SAVED', id: t.id });
+          (window as any).Cordex?.history?.save?.({ filePath: newPath, content });
+          window.dispatchEvent(new Event('cordex:history-updated'));
+          const root = (window as any).__cordexRoot ?? state.projectRoot;
+          if (root && newPath.startsWith(root)) {
+            try {
+              const result = await (window as any).Cordex?.fs?.readDir?.(root);
+              if (result?.ok) dispatch({ type: 'SET_FILE_TREE', tree: result.tree });
+            } catch (e) { console.error('Failed to refresh file tree:', e); }
+          }
+          restoreScroll();
+          return;
+        }
+        (window as any).Cordex?.fs?.writeFile?.(t.path, content)?.then(() => {
+          dispatch({ type: 'MARK_TAB_SAVED', id: tabId });
+          (window as any).Cordex?.history?.save?.({ filePath: t.path, content });
+          window.dispatchEvent(new Event('cordex:history-updated'));
+          restoreScroll();
+        });
+      });
+
+      // ── Toggle line comment ─────────────────────────────────────────────
+      editor.addCommand((mon as any).KeyMod.CtrlCmd | (mon as any).KeyCode.Slash, () => {
+        editor.getAction('editor.action.commentLine')?.run();
+      });
+      editor.addCommand((mon as any).KeyMod.CtrlCmd | (mon as any).KeyMod.Shift | (mon as any).KeyCode.Digit7, () => {
+        editor.getAction('editor.action.commentLine')?.run();
+      });
+
+      // ── Selection helpers ───────────────────────────────────────────────
+      (window as any).__cordexGetSelection = () => {
+        const sel = editor.getSelection();
+        if (!sel || (sel.startLineNumber === sel.endLineNumber && sel.startColumn === sel.endColumn)) return null;
+        const m = editor.getModel();
+        return m ? m.getValueInRange(sel) : null;
       };
-    };
+
+      (window as any).__cordexGetSelectionInfo = () => {
+        const sel = editor.getSelection();
+        const hasSelection = sel && !(sel.startLineNumber === sel.endLineNumber && sel.startColumn === sel.endColumn);
+        if (!hasSelection) return { hasSelection: false, preview: '', lineCount: 0, range: null };
+        const m = editor.getModel();
+        if (!m) return { hasSelection: false, preview: '', lineCount: 0, range: null };
+        const selectedText = m.getValueInRange(sel!);
+        const lineCount    = sel!.endLineNumber - sel!.startLineNumber + 1;
+        const preview      = selectedText.split('\n')[0].slice(0, 60);
+        return {
+          hasSelection: true, preview, lineCount,
+          range: { startLineNumber: sel!.startLineNumber, startColumn: sel!.startColumn, endLineNumber: sel!.endLineNumber, endColumn: sel!.endColumn },
+        };
+      };
+    })();
 
     return () => {
-      s1.dispose();
-      s2.dispose();
-      editor.dispose();
-      editorRef.current = null;
-      (window as any).__activeEditor = null;
-      (window as any).__cordexGetSelection = null;
-    };
-  }, [tabId, tab?.language]);
+      cancelled = true;
+      localSubscriptions.forEach(s => { try { s.dispose(); } catch {} });
 
-  // ── Sync external changes (AI / file reload) ─────────────────────────
+      // Detach the model from the widget BEFORE disposing the widget.
+      // The model stays alive in _modelCache so the TS worker URI remains valid.
+      if (editorRef.current) {
+        try { editorRef.current.setModel(null); } catch {}
+        try { editorRef.current.dispose(); } catch {}
+        editorRef.current = null;
+      }
+      (window as any).__activeEditor         = null;
+      (window as any).__cordexGetSelection   = null;
+      (window as any).__cordexGetSelectionInfo = null;
+    };
+  }, [tabId, tab?.language]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Sync external changes (AI / file reload) ─────────────────────────────
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor || !tab) return;
-    const current = editor.getValue();
-    if (current === tab.content) return;
-
     const model = editor.getModel();
-    if (!model) return;
+    if (!model || model.isDisposed()) return;
+    if (model.getValue() === tab.content) return;
 
-    // BUG FIX: preserve scroll + cursor, and use applyEdits (not pushEditOperations)
-    // for external syncs so Ctrl+Z undo history stays clean for the user's own edits.
     const scrollTop  = editor.getScrollTop();
     const scrollLeft = editor.getScrollLeft();
     const pos = editor.getPosition();
     const sel = editor.getSelection();
 
     ignoreRef.current = true;
-
-    // applyEdits does NOT create an undo stop — external changes (AI, file restore,
-    // watcher) won't appear in the user's Ctrl+Z history.
-    model.applyEdits([{ range: model.getFullModelRange(), text: tab.content }]);
-
+    model.applyEdits([{ range: model.getFullModelRange(), text: tab.content ?? '' }]);
     if (pos) editor.setPosition(pos);
     if (sel) editor.setSelection(sel);
     editor.setScrollTop(scrollTop);
@@ -345,106 +372,52 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
     ignoreRef.current = false;
   }, [tab?.content]);
 
-  // ── Jump to line from search panel ──────────────────────────────────────
+  // ── Jump to line ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!state.gotoLine || !editorRef.current) return;
     const editor = editorRef.current;
-    const line = state.gotoLine;
+    const line   = state.gotoLine;
     editor.revealLineInCenter(line);
     editor.setPosition({ lineNumber: line, column: 1 });
     editor.focus();
-    dispatch({ type: 'GOTO_LINE', line: 0 }); // clear so it doesn't re-trigger
+    dispatch({ type: 'GOTO_LINE', line: 0 });
   }, [state.gotoLine]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Integer pixel dimensions ─────────────────────────────────────────
+  // ── Tab closed → dispose cached model ───────────────────────────────────
+  useEffect(() => {
+    return () => {
+      // Only runs when this component is truly unmounted (tab removed, not just
+      // hidden).  We wait a tick so the TS worker can flush any in-flight
+      // diagnostics before the URI disappears.
+      const cached = _modelCache.get(tabId);
+      if (cached) {
+        setTimeout(() => {
+          if (!cached.isDisposed()) cached.dispose();
+          _modelCache.delete(tabId);
+        }, 500);
+      }
+    };
+  }, [tabId]);
+
   const width  = wrapperSize.width  > 0 ? `${Math.floor(wrapperSize.width)}px`  : '100%';
   const height = wrapperSize.height > 0 ? `${Math.floor(wrapperSize.height)}px` : '100%';
 
   return (
     <div className="flex-1 relative min-h-0" ref={wrapperRef}>
-      <div
-        ref={containerRef}
-        className="absolute inset-0"
-        style={{ width, height }}
-      />
+      <div ref={containerRef} className="absolute inset-0" style={{ width, height }} />
     </div>
   );
 };
 
-// ── Language mapping ────────────────────────────────────────────────────
+// ── Language mapping ──────────────────────────────────────────────────────────
 function mapLang(lang: string): string {
   const map: Record<string, string> = {
-    typescript:'typescript', tsx:'typescript', javascript:'javascript', jsx:'javascript',
-    cjs:'javascript',     // BUG FIX: .cjs was falling through to plaintext
-    python:'python', rust:'rust', cpp:'cpp', c:'c', go:'go', java:'java',
-    css:'css', scss:'scss', json:'json', html:'html', markdown:'markdown',
-    shell:'shell', yaml:'yaml', toml:'toml', rb:'ruby', php:'php',
-    sql:'sql',            // BUG FIX: .sql was falling through to plaintext
-    gdscript:'gdscript',
-    gd:'gdscript',        // BUG FIX: .gd files → GDScript highlighting
+    typescript: 'typescript', tsx: 'typescript',
+    javascript: 'javascript', jsx: 'javascript', cjs: 'javascript',
+    python: 'python', rust: 'rust', cpp: 'cpp', c: 'c', go: 'go', java: 'java',
+    css: 'css', scss: 'scss', json: 'json', html: 'html', markdown: 'markdown',
+    shell: 'shell', yaml: 'yaml', toml: 'toml', rb: 'ruby', php: 'php',
+    sql: 'sql', gdscript: 'gdscript', gd: 'gdscript',
   };
   return map[lang] ?? 'plaintext';
 }
-
-// ── Ghost autocomplete (FIM inline completions) ─────────────────────────
-// Uses qwen2.5-coder:1.5b-base via the aiRouter IPC.
-// Registered once; safe to call multiple times (idempotent).
-let _ghostProvider: monaco.IDisposable | null = null;
-let _ghostTimer: ReturnType<typeof setTimeout> | null = null;
-
-export function registerGhostAutocomplete(): void {
-  if (_ghostProvider) return;
-
-  _ghostProvider = monaco.languages.registerInlineCompletionsProvider('*', {
-    async provideInlineCompletions(model, position, _ctx, token) {
-      // Skip trivially short lines
-      const lineSoFar = model.getLineContent(position.lineNumber)
-        .slice(0, position.column - 1).trimEnd();
-      if (lineSoFar.length < 3) return { items: [] };
-
-      // 300 ms debounce — wait for user to stop typing
-      await new Promise<void>(res => {
-        if (_ghostTimer) clearTimeout(_ghostTimer);
-        _ghostTimer = setTimeout(res, 300);
-      });
-      if (token.isCancellationRequested) return { items: [] };
-
-      // Context: up to 40 lines before + 5 after cursor
-      const lnBefore = Math.max(1, position.lineNumber - 40);
-      const lnAfter  = Math.min(model.getLineCount(), position.lineNumber + 5);
-
-      const before = model.getValueInRange({
-        startLineNumber: lnBefore, startColumn: 1,
-        endLineNumber:   position.lineNumber, endColumn: position.column,
-      });
-      const after = model.getValueInRange({
-        startLineNumber: position.lineNumber, startColumn: position.column,
-        endLineNumber:   lnAfter, endColumn: model.getLineMaxColumn(lnAfter),
-      });
-
-      try {
-        const result = await (window as any).Cordex?.ai?.autocomplete?.({
-          before, after, language: model.getLanguageId(),
-        });
-        if (!result?.ok || !result.text?.trim()) return { items: [] };
-
-        return {
-          items: [{
-            insertText: result.text,
-            range: new monaco.Range(
-              position.lineNumber, position.column,
-              position.lineNumber, position.column
-            ),
-          }],
-        };
-      } catch {
-        return { items: [] };
-      }
-    },
-    // freeInlineCompletions() {},
-    disposeInlineCompletions() {},
-  });
-}
-
-// Auto-register on module load
-registerGhostAutocomplete();

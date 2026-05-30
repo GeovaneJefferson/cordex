@@ -8,7 +8,7 @@ const { EventEmitter } = require('events')
 const { chunkFile } = require('./chunker.cjs')
 
 const OLLAMA_BASE = 'http://127.0.0.1:11434'
-const EMBED_MODEL = 'nomic-embed-text'
+const EMBED_MODEL = 'qwen3-embedding:0.6b'
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '__pycache__', '.venv', 'venv', '.next', 'coverage'])
 const SKIP_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'pdf', 'zip', 'tar', 'gz', 'db', 'sqlite'])
 const MAX_FILE_SIZE = 300 * 1024
@@ -184,7 +184,7 @@ class EmbeddingIndex extends EventEmitter {
     const db = this._getDb();
     // Only load up to 500 recent chunks as a simple cap
     const rows = db.prepare(
-      'SELECT filePath, startLine, endLine, text, embedding FROM chunks WHERE embedding IS NOT NULL ORDER BY rowid DESC LIMIT 500'
+      'SELECT filePath, startLine, endLine, text, embedding FROM chunks WHERE embedding IS NOT NULL'
     ).all();
     if (rows.length === 0) return [];
 

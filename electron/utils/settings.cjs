@@ -9,7 +9,7 @@ const DEFAULT_SETTINGS = {
   fontSize: 13,
   autocompleteModel: 'qwen2.5-coder:1.5b-base',
   analysisModel:     'qwen2.5-coder:7b',
-  embedModel:        'nomic-embed-text',
+  embedModel:        'qwen3-embedding:0.6b',
   flowModel:         'qwen2.5-coder:7b',
 }
 

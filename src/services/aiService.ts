@@ -24,4 +24,8 @@ export const aiService = {
   /** Improve: refactors code (selection or full file) and returns { explanation, fixedCode } */
   improveCode: (params: { code: string; filePath: string; isSelection?: boolean }) =>
     getAI()?.bugFixCode?.({ ...params, mode: 'improve' }),
+
+  /** Plan: returns a structured TODO list of bugs or doc tasks before executing */
+  planTodos: (params: { code: string; filePath: string; mode: 'bugfix' | 'document' | 'improve' }) =>
+    getAI()?.planTodos?.(params),
 };

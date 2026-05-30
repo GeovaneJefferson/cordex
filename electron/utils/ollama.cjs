@@ -9,7 +9,7 @@ async function ollamaGenerate({ model, prompt, stream = false, signal, temperatu
     keep_alive: '5m',
     options: {
       num_predict: stream ? 1024 : num_predict,
-      num_ctx: 4096,
+      num_ctx: 8192,
       temperature: temperature !== undefined ? temperature : (stream ? 0.1 : 0.15),
       top_p: 0.9,
       stop: ['```\n\n', '---\n\n'],

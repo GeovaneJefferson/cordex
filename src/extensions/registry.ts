@@ -5,10 +5,10 @@ import { Extension } from './types';
 
 export const EXTENSIONS: Extension[] = [
   {
-    id: 'pylance',
-    name: 'Pylance',
-    description: 'Fast, feature-rich language support for Python. Provides type checking, auto-imports, docstring tooltips, and IntelliSense powered by Pyright.',
-    version: '2024.12.1',
+    id: 'pyright',
+    name: 'Pyright',
+    description: 'Fast, feature-rich language support for Python. Provides type checking, auto-imports, docstring tooltips, and IntelliSense powered by Pyright (the same engine used by Pylance).',
+    version: '1.1.384',
     author: 'Microsoft',
     icon: 'code',
     iconColor: '#3b82f6',

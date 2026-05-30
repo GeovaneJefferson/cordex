@@ -13,8 +13,6 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { Tab } from '../types';
 
-// ── Types matching flowHandler output ────────────────────────────────────────
-
 type RFNode = {
   id: string;
   type: string;
@@ -61,8 +59,6 @@ type RunResult = {
   phase?: string;
 };
 
-// ── Node type → visual config ─────────────────────────────────────────────────
-
 const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; iconColor: string }> = {
   entry:    { bg: '#f0fdf4', border: '#22c55e', icon: 'play_arrow',      iconColor: '#16a34a' },
   exit:     { bg: '#f0f9ff', border: '#38bdf8', icon: 'stop',            iconColor: '#0284c7' },
@@ -74,8 +70,6 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; ic
 };
 
 const getNodeStyle = (nodeType: string) => NODE_STYLES[nodeType] ?? NODE_STYLES.call;
-
-// ── Custom FlowNode renderer ──────────────────────────────────────────────────
 
 const FlowNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   const style = getNodeStyle(data.nodeType);
@@ -89,28 +83,21 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
     style.border;
 
   return (
-    <div
-      style={{
-        width: 260,
-        minHeight: 80,
-        background: style.bg,
-        border: `2px solid ${ringColor}`,
-        borderRadius: 10,
-        boxShadow: selected
-          ? `0 0 0 3px ${ringColor}33, 0 4px 16px rgba(0,0,0,0.10)`
-          : '0 2px 8px rgba(0,0,0,0.07)',
-        padding: '10px 14px',
-        transition: 'border-color 0.15s, box-shadow 0.15s',
-        cursor: 'default',
-        position: 'relative',
-      }}
-    >
-      {/* Header row */}
+    <div style={{
+      width: 260, minHeight: 80,
+      background: style.bg,
+      border: `2px solid ${ringColor}`,
+      borderRadius: 10,
+      boxShadow: selected
+        ? `0 0 0 3px ${ringColor}33, 0 4px 16px rgba(0,0,0,0.10)`
+        : '0 2px 8px rgba(0,0,0,0.07)',
+      padding: '10px 14px',
+      transition: 'border-color 0.15s, box-shadow 0.15s',
+      cursor: 'default',
+      position: 'relative',
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: data.description ? 6 : 0 }}>
-        <span
-          className="material-symbols-outlined"
-          style={{ fontSize: 16, color: style.iconColor, flexShrink: 0, lineHeight: 1 }}
-        >
+        <span className="material-symbols-outlined" style={{ fontSize: 16, color: style.iconColor, flexShrink: 0, lineHeight: 1 }}>
           {style.icon}
         </span>
         <span style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', lineHeight: 1.3, flex: 1 }}>
@@ -120,40 +107,21 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>:{data.line}</span>
         )}
       </div>
-
-      {/* Description */}
       {data.description && (
-        <p style={{ fontSize: 11, color: '#64748b', margin: 0, lineHeight: 1.4 }}>
-          {data.description}
-        </p>
+        <p style={{ fontSize: 11, color: '#64748b', margin: 0, lineHeight: 1.4 }}>{data.description}</p>
       )}
-
-      {/* Risk badge */}
       {simState === 'risk' && data.__risks?.length > 0 && (
-        <div style={{
-          marginTop: 6,
-          background: '#fff1f2',
-          border: '1px solid #fecaca',
-          borderRadius: 5,
-          padding: '3px 7px',
-        }}>
+        <div style={{ marginTop: 6, background: '#fff1f2', border: '1px solid #fecaca', borderRadius: 5, padding: '3px 7px' }}>
           {(data.__risks as string[]).map((r: string) => (
             <p key={r} style={{ fontSize: 10, color: '#dc2626', margin: 0, lineHeight: 1.5 }}>⚠ {r}</p>
           ))}
         </div>
       )}
-
-      {/* Sim state badge */}
       {simState !== 'idle' && (
         <div style={{
-          position: 'absolute',
-          top: -8,
-          right: 10,
-          fontSize: 9,
-          fontWeight: 700,
-          letterSpacing: '0.04em',
-          padding: '2px 7px',
-          borderRadius: 99,
+          position: 'absolute', top: -8, right: 10,
+          fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
+          padding: '2px 7px', borderRadius: 99,
           background: simState === 'executed' ? '#dcfce7' : simState === 'risk' ? '#fee2e2' : '#fef9c3',
           color:      simState === 'executed' ? '#15803d' : simState === 'risk' ? '#b91c1c' : '#854d0e',
           border: `1px solid ${simState === 'executed' ? '#bbf7d0' : simState === 'risk' ? '#fca5a5' : '#fde68a'}`,
@@ -167,48 +135,26 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
 
 const nodeTypes = { flowNode: FlowNodeComponent };
 
-// ── Output Panel ─────────────────────────────────────────────────────────────
-
 const OutputPanel: React.FC<{
   result: RunResult | null;
   simResult: SimulationResult | null;
   onClose: () => void;
 }> = ({ result, simResult, onClose }) => {
   if (!result && !simResult) return null;
-
   return (
     <div style={{
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: 180,
-      background: '#0f172a',
-      borderTop: '1px solid #1e293b',
-      display: 'flex',
-      flexDirection: 'column',
-      zIndex: 20,
+      position: 'absolute', bottom: 0, left: 0, right: 0, height: 180,
+      background: '#0f172a', borderTop: '1px solid #1e293b',
+      display: 'flex', flexDirection: 'column', zIndex: 20,
     }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        padding: '4px 12px',
-        borderBottom: '1px solid #1e293b',
-        gap: 8,
-        flexShrink: 0,
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '4px 12px', borderBottom: '1px solid #1e293b', gap: 8, flexShrink: 0 }}>
         {result && (
           <>
-            <span
-              className="material-symbols-outlined"
-              style={{ fontSize: 13, color: result.success ? '#4ade80' : '#f87171' }}
-            >
+            <span className="material-symbols-outlined" style={{ fontSize: 13, color: result.success ? '#4ade80' : '#f87171' }}>
               {result.success ? 'check_circle' : 'cancel'}
             </span>
             <span style={{ fontSize: 11, color: '#94a3b8', flex: 1 }}>
-              {result.mode === 'execution'
-                ? `Exit ${result.exitCode}${result.timedOut ? ' · timed out' : ''}`
-                : 'Simulation complete'}
+              {result.mode === 'execution' ? `Exit ${result.exitCode}${result.timedOut ? ' · timed out' : ''}` : 'Simulation complete'}
             </span>
           </>
         )}
@@ -220,28 +166,17 @@ const OutputPanel: React.FC<{
             </span>
           </>
         )}
-        <button
-          onClick={onClose}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
-        >
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
           <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#475569' }}>close</span>
         </button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', fontFamily: 'monospace', fontSize: 11 }}>
-        {result?.stdout && (
-          <pre style={{ color: '#e2e8f0', margin: 0, whiteSpace: 'pre-wrap' }}>{result.stdout}</pre>
-        )}
+        {result?.stdout && <pre style={{ color: '#e2e8f0', margin: 0, whiteSpace: 'pre-wrap' }}>{result.stdout}</pre>}
         {result?.stderr && (
-          <pre style={{ color: '#f87171', margin: 0, whiteSpace: 'pre-wrap', marginTop: result.stdout ? 8 : 0 }}>
-            {result.stderr}
-          </pre>
+          <pre style={{ color: '#f87171', margin: 0, whiteSpace: 'pre-wrap', marginTop: result.stdout ? 8 : 0 }}>{result.stderr}</pre>
         )}
         {(simResult?.fileRisks?.length ?? 0) > 0 && !result && (
-          <div>
-            {simResult!.fileRisks.map(r => (
-              <p key={r} style={{ color: '#fbbf24', margin: '2px 0' }}>⚠ {r}</p>
-            ))}
-          </div>
+          <div>{simResult!.fileRisks.map(r => <p key={r} style={{ color: '#fbbf24', margin: '2px 0' }}>⚠ {r}</p>)}</div>
         )}
         {simResult && !result && simResult.fileRisks?.length === 0 && (
           <p style={{ color: '#4ade80', margin: 0 }}>No global risks detected.</p>
@@ -251,8 +186,7 @@ const OutputPanel: React.FC<{
   );
 };
 
-// ── Inner flow canvas (needs ReactFlowProvider context) ──────────────────────
-
+// ── FIX Bug 3: sync useNodesState/useEdgesState when props change ─────────────
 const FlowCanvas: React.FC<{
   flowTab: Tab;
   rfNodes: RFNode[];
@@ -263,8 +197,7 @@ const FlowCanvas: React.FC<{
 }> = ({ flowTab, rfNodes, rfEdges, simResult, runResult, onCloseOutput }) => {
   const { fitView } = useReactFlow();
 
-  // Merge simulation state into node data
-  const enrichedNodes = rfNodes.map(n => {
+  const enrich = (nodes: RFNode[]) => nodes.map(n => {
     let simState: 'executed' | 'risk' | 'predicted' | 'idle' = 'idle';
     let risks: string[] = [];
     if (simResult) {
@@ -276,48 +209,37 @@ const FlowCanvas: React.FC<{
     return {
       ...n,
       data: {
-        nodeType:    n.nodeType,
-        label:       n.label,
-        description: n.description,
-        errorMsg:    n.errorMsg,
-        line:        n.line,
-        __simState:  simState,
-        __risks:     risks,
+        nodeType: n.nodeType, label: n.label, description: n.description,
+        errorMsg: n.errorMsg, line: n.line, __simState: simState, __risks: risks,
       },
     };
   });
 
-  const [nodes, , onNodesChange] = useNodesState(enrichedNodes);
-  const [edges, , onEdgesChange] = useEdgesState(rfEdges as any);
+  const [nodes, setNodes, onNodesChange] = useNodesState(enrich(rfNodes));
+  const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges as any);
 
-  useEffect(() => { setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 80); }, [rfNodes.length]);
+  // Sync when parent state changes
+  useEffect(() => { setNodes(enrich(rfNodes)); }, [rfNodes, simResult]);
+  useEffect(() => { setEdges(rfEdges as any); }, [rfEdges]);
+  useEffect(() => {
+    if (rfNodes.length > 0) setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 80);
+  }, [rfNodes.length]);
 
   const hasOutput = !!runResult || !!simResult;
 
   return (
     <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
+        nodes={nodes} edges={edges}
+        onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.15 }}
-        minZoom={0.2}
-        maxZoom={2}
+        fitView fitViewOptions={{ padding: 0.15 }}
+        minZoom={0.2} maxZoom={2}
         style={{ background: '#f8fafc', height: hasOutput ? 'calc(100% - 180px)' : '100%' }}
         proOptions={{ hideAttribution: true }}
       >
         <Background color="#e2e8f0" gap={20} size={1} />
-        <Controls
-          style={{
-            background: 'white',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-          }}
-        />
+        <Controls style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }} />
         <MiniMap
           style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8 }}
           nodeColor={n => getNodeStyle((n as any).nodeType ?? 'call').border}
@@ -325,16 +247,9 @@ const FlowCanvas: React.FC<{
         {rfNodes.length === 0 && (
           <Panel position="top-center">
             <div style={{
-              background: 'white',
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: '12px 20px',
-              fontSize: 13,
-              color: '#94a3b8',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              background: 'white', border: '1px solid #e2e8f0', borderRadius: 10,
+              padding: '12px 20px', fontSize: 13, color: '#94a3b8',
+              display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
             }}>
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>account_tree</span>
               No flow data — click Analyze to generate
@@ -342,46 +257,57 @@ const FlowCanvas: React.FC<{
           </Panel>
         )}
       </ReactFlow>
-
       <OutputPanel result={runResult} simResult={simResult} onClose={onCloseOutput} />
     </div>
   );
 };
 
-// ── Main FlowView component ───────────────────────────────────────────────────
-
-export interface FlowViewProps {
-  flowTab: Tab;
-}
+export interface FlowViewProps { flowTab: Tab; }
 
 export const FlowView: React.FC<FlowViewProps> = ({ flowTab }) => {
-  const [rfNodes,    setRfNodes]    = useState<RFNode[]>([]);
-  const [rfEdges,    setRfEdges]    = useState<RFEdge[]>([]);
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-  const [simResult,  setSimResult]  = useState<SimulationResult | null>(null);
-  const [runResult,  setRunResult]  = useState<RunResult | null>(null);
-  const [mode,       setMode]       = useState<'execution' | 'simulation' | null>(null);
+  const [rfNodes,   setRfNodes]   = useState<RFNode[]>([]);
+  const [rfEdges,   setRfEdges]   = useState<RFEdge[]>([]);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
+  const [simResult, setSimResult] = useState<SimulationResult | null>(null);
+  const [runResult, setRunResult] = useState<RunResult | null>(null);
+  const [mode,      setMode]      = useState<'execution' | 'simulation' | null>(null);
   const abortRef = useRef(false);
 
-  // Analyze: call IPC analyze-flow
+  // FIX Bug 1 + 2: use window.electronAPI (contextBridge) instead of ipcRenderer directly
+  // Always read content from the live source tab so edits after opening the flow tab are picked up
   const handleAnalyze = useCallback(async () => {
-    if (!flowTab.content && !flowTab.path) return;
-    setLoading(true);
-    setError(null);
-    setSimResult(null);
-    setRunResult(null);
-    abortRef.current = false;
+    const sourceContent = (() => {
+      if (flowTab.flowSourceTabId) {
+        const src = (window as any).__cordexGetTabContent?.(flowTab.flowSourceTabId);
+        if (src) return src;
+      }
+      return flowTab.content ?? '';
+    })();
 
+    if (!sourceContent.trim() && !flowTab.path) {
+      setError('No source code found. Make sure the editor tab has content before opening Flow.');
+      return;
+    }
+
+    if (!((window as any).electronAPI?.analyzeFlow)) {
+      setError('electronAPI not available — check preload.cjs is loaded correctly.');
+      return;
+    }
+
+    setLoading(true); setError(null); setSimResult(null); setRunResult(null);
+    abortRef.current = false;
     try {
-      const result = await (window as any).electron?.ipcRenderer?.invoke('analyze-flow', {
-        code:        flowTab.content ?? '',
-        filePath:    flowTab.path ?? null,
-        projectRoot: flowTab.projectRoot ?? null,
+      const result = await (window as any).electronAPI.analyzeFlow({
+        code:        sourceContent,
+        filePath:    flowTab.path?.startsWith('flow::') ? null : (flowTab.path ?? null),
+        projectRoot: (flowTab as any).projectRoot ?? null,
       });
       if (abortRef.current) return;
       if (result?.error) { setError(result.error); return; }
-      setRfNodes(result?.nodes ?? []);
+      const nodes = result?.nodes ?? [];
+      if (nodes.length === 0) { setError('Model returned no flow nodes. Try a different file or model.'); return; }
+      setRfNodes(nodes);
       setRfEdges(result?.edges ?? []);
     } catch (e: any) {
       setError(e?.message ?? 'Unknown error');
@@ -390,9 +316,8 @@ export const FlowView: React.FC<FlowViewProps> = ({ flowTab }) => {
     }
   }, [flowTab]);
 
-  // Detect run mode
   const detectMode = useCallback(async () => {
-    const result = await (window as any).electron?.ipcRenderer?.invoke('flow:detect-mode', {
+    const result = await (window as any).electronAPI?.detectFlowMode({
       language: flowTab.language,
       filePath: flowTab.path,
     });
@@ -400,56 +325,37 @@ export const FlowView: React.FC<FlowViewProps> = ({ flowTab }) => {
     return result?.mode ?? 'simulation';
   }, [flowTab]);
 
-  // Run or Simulate
   const handleRun = useCallback(async () => {
-    setSimResult(null);
-    setRunResult(null);
+    setSimResult(null); setRunResult(null);
     const detectedMode = await detectMode();
-
-    if (detectedMode === 'execution') {
-      setLoading(true);
-      try {
-        const result = await (window as any).electron?.ipcRenderer?.invoke('flow:run', {
-          code:     flowTab.content ?? '',
-          language: flowTab.language,
-          filePath: flowTab.path,
+    setLoading(true);
+    try {
+      if (detectedMode === 'execution') {
+        const result = await (window as any).electronAPI?.runFlow({
+          code: flowTab.content ?? '', language: flowTab.language, filePath: flowTab.path,
         });
         setRunResult(result);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      setLoading(true);
-      try {
-        const result = await (window as any).electron?.ipcRenderer?.invoke('flow:simulate', {
-          code:     flowTab.content ?? '',
-          language: flowTab.language,
-          nodes:    rfNodes,
+      } else {
+        const result = await (window as any).electronAPI?.simulateFlow({
+          code: flowTab.content ?? '', language: flowTab.language, nodes: rfNodes,
         });
         setSimResult(result);
-      } finally {
-        setLoading(false);
       }
+    } finally {
+      setLoading(false);
     }
   }, [detectMode, flowTab, rfNodes]);
 
-  // Save / Load on mount
   useEffect(() => {
     if (!flowTab.fileHash) return;
-    (window as any).electron?.ipcRenderer?.invoke('load-flow', flowTab.fileHash).then((saved: any) => {
-      if (saved?.nodes?.length) {
-        setRfNodes(saved.nodes);
-        setRfEdges(saved.edges ?? []);
-      }
+    (window as any).electronAPI?.loadFlow(flowTab.fileHash).then((saved: any) => {
+      if (saved?.nodes?.length) { setRfNodes(saved.nodes); setRfEdges(saved.edges ?? []); }
     });
   }, [flowTab.fileHash]);
 
   const handleSave = useCallback(async () => {
     if (!flowTab.fileHash) return;
-    await (window as any).electron?.ipcRenderer?.invoke('save-flow', flowTab.fileHash, {
-      nodes: rfNodes,
-      edges: rfEdges,
-    });
+    await (window as any).electronAPI?.saveFlow(flowTab.fileHash, { nodes: rfNodes, edges: rfEdges });
   }, [flowTab.fileHash, rfNodes, rfEdges]);
 
   const runLabel = mode === 'execution' ? 'Run' : 'Simulate';
@@ -457,113 +363,68 @@ export const FlowView: React.FC<FlowViewProps> = ({ flowTab }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-
-      {/* ── Toolbar ── */}
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '5px 10px',
-        borderBottom: '1px solid #e2e8f0',
-        background: '#ffffff',
-        flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px',
+        borderBottom: '1px solid #e2e8f0', background: '#ffffff', flexShrink: 0,
       }}>
         <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#64748b' }}>account_tree</span>
         <span style={{ fontSize: 12, color: '#475569', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {flowTab.name}
         </span>
-
-        <button
-          onClick={handleAnalyze}
-          disabled={loading}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            padding: '3px 10px',
-            fontSize: 11, fontWeight: 600,
-            background: loading ? '#f1f5f9' : '#6366f1',
-            color: loading ? '#94a3b8' : 'white',
-            border: 'none', borderRadius: 6, cursor: loading ? 'not-allowed' : 'pointer',
-            transition: 'background 0.15s',
-          }}
-        >
+        <button onClick={handleAnalyze} disabled={loading} style={{
+          display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px',
+          fontSize: 11, fontWeight: 600,
+          background: loading ? '#f1f5f9' : '#6366f1', color: loading ? '#94a3b8' : 'white',
+          border: 'none', borderRadius: 6, cursor: loading ? 'not-allowed' : 'pointer', transition: 'background 0.15s',
+        }}>
           {loading
             ? <><span className="material-symbols-outlined" style={{ fontSize: 13, animation: 'spin 1s linear infinite' }}>progress_activity</span> Analyzing…</>
             : <><span className="material-symbols-outlined" style={{ fontSize: 13 }}>auto_fix_high</span> Analyze</>
           }
         </button>
-
-        <button
-          onClick={handleRun}
-          disabled={loading || rfNodes.length === 0}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            padding: '3px 10px',
-            fontSize: 11, fontWeight: 600,
-            background: rfNodes.length === 0 ? '#f1f5f9' : '#0ea5e9',
-            color: rfNodes.length === 0 ? '#94a3b8' : 'white',
-            border: 'none', borderRadius: 6, cursor: (loading || rfNodes.length === 0) ? 'not-allowed' : 'pointer',
-            transition: 'background 0.15s',
-          }}
-        >
+        <button onClick={handleRun} disabled={loading || rfNodes.length === 0} style={{
+          display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px',
+          fontSize: 11, fontWeight: 600,
+          background: rfNodes.length === 0 ? '#f1f5f9' : '#0ea5e9', color: rfNodes.length === 0 ? '#94a3b8' : 'white',
+          border: 'none', borderRadius: 6, cursor: (loading || rfNodes.length === 0) ? 'not-allowed' : 'pointer', transition: 'background 0.15s',
+        }}>
           <span className="material-symbols-outlined" style={{ fontSize: 13 }}>{runIcon}</span>
           {runLabel}
         </button>
-
-        <button
-          onClick={handleSave}
-          disabled={rfNodes.length === 0}
-          title="Save layout"
-          style={{
-            display: 'flex', alignItems: 'center',
-            padding: '3px 7px',
-            background: 'none', border: '1px solid #e2e8f0',
-            borderRadius: 6, cursor: rfNodes.length === 0 ? 'not-allowed' : 'pointer',
-            color: '#64748b',
-          }}
-        >
+        <button onClick={handleSave} disabled={rfNodes.length === 0} title="Save layout" style={{
+          display: 'flex', alignItems: 'center', padding: '3px 7px',
+          background: 'none', border: '1px solid #e2e8f0', borderRadius: 6,
+          cursor: rfNodes.length === 0 ? 'not-allowed' : 'pointer', color: '#64748b',
+        }}>
           <span className="material-symbols-outlined" style={{ fontSize: 13 }}>save</span>
         </button>
       </div>
 
-      {/* ── Error banner ── */}
       {error && (
         <div style={{
-          padding: '7px 12px',
-          background: '#fff1f2',
-          borderBottom: '1px solid #fecaca',
-          fontSize: 11,
-          color: '#dc2626',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          flexShrink: 0,
+          padding: '7px 12px', background: '#fff1f2', borderBottom: '1px solid #fecaca',
+          fontSize: 11, color: '#dc2626', flexShrink: 0,
+          maxHeight: 140, overflowY: 'auto',
         }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>error_outline</span>
-          {error}
-          <button
-            onClick={() => setError(null)}
-            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626' }}
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>close</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>error_outline</span>
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1, fontFamily: 'inherit' }}>{error}</pre>
+            <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', flexShrink: 0 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 13 }}>close</span>
+            </button>
+          </div>
         </div>
       )}
 
-      {/* ── Canvas ── */}
       <ReactFlowProvider>
         <FlowCanvas
-          flowTab={flowTab}
-          rfNodes={rfNodes}
-          rfEdges={rfEdges}
-          simResult={simResult}
-          runResult={runResult}
+          flowTab={flowTab} rfNodes={rfNodes} rfEdges={rfEdges}
+          simResult={simResult} runResult={runResult}
           onCloseOutput={() => { setRunResult(null); setSimResult(null); }}
         />
       </ReactFlowProvider>
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 };

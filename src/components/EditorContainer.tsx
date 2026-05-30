@@ -7,9 +7,10 @@ import { AndroidEmulatorPanel } from './AndroidEmulatorPanel';
 import { CustomActionsPanel } from './CustomActionsPanel';
 import { ChatPanel } from './ChatPanel';
 import { LocalHistoryPanel } from './LocalHistoryPanel';
-import { useAppState } from '../store/AppContext';
+import { AgentPopover } from './AgentPopover';
 import { useAI } from '../hooks/useAI';
 import { Tab } from '../types';
+import { useAppState } from '../store/AppContext';
 
 const Cordex = (window as any).Cordex;
 
@@ -29,7 +30,23 @@ const AIBtn: React.FC<{
             : active || hasSelection
               ? 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100'
               : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-          }`}>
+          }`}
+        style={
+          dark
+            ? { backgroundColor: 'var(--gray-900)', color: 'white' }
+            : active || hasSelection
+              ? {
+                  backgroundColor: 'var(--accent-light)',
+                  color: 'var(--accent)',
+                  borderColor: 'var(--accent-border)',
+                }
+              : {
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  borderColor: 'var(--border-color)',
+                }
+        }
+      >
         <span
           className={`material-symbols-outlined text-[14px] ${loading ? 'animate-spin' : ''}`}
           style={iconStyle}
@@ -41,9 +58,9 @@ const AIBtn: React.FC<{
       {hasSelection && (
         <span style={{
           position: 'absolute', top: -4, right: -4,
-          width: 16, height: 16, background: '#16a34a', borderRadius: '50%',
+          width: 16, height: 16, background: 'var(--success)', borderRadius: '50%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'white', fontSize: '10px', fontWeight: 'bold', border: '2px solid white'
+          color: 'white', fontSize: '10px', fontWeight: 'bold', border: '2px solid var(--bg-primary)'
         }} title={`Selection active: ${selectionPreview}`}>✓</span>
       )}
     </div>
@@ -59,9 +76,9 @@ const PreviewBtn: React.FC<{
     style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       width: 28, height: 28, borderRadius: 7,
-      border: `1.5px solid ${active ? '#f97316' : '#e2e8f0'}`,
-      background: active ? '#fff7ed' : 'white',
-      color: active ? '#ea580c' : '#64748b',
+      border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border-color)'}`,
+      background: active ? 'var(--accent-light)' : 'var(--bg-primary)',
+      color: active ? 'var(--accent-hover)' : 'var(--text-muted)',
       cursor: 'pointer',
       transition: 'all 0.15s',
       flexShrink: 0,
@@ -73,7 +90,6 @@ const PreviewBtn: React.FC<{
 
 export const EditorContainer: React.FC = () => {
   const { state, dispatch } = useAppState();
-  // Only keep the AI methods we actually use
   const { analyzeCode, bugFixActiveTab, improveActiveTab } = useAI();
 
   const [docLoading,     setDocLoading]     = useState(false);
@@ -88,19 +104,34 @@ export const EditorContainer: React.FC = () => {
   const [isDraggingResizer, setIsDraggingResizer] = useState(false);
   const containerRef  = useRef<HTMLDivElement>(null);
 
-  // Poll for selection changes and update state for visual feedback
+  // ── Stable selection polling (NO BLINKING) ─────────────────
+  const prevInfoRef = useRef<typeof selectionInfo>(selectionInfo);
+
   useEffect(() => {
-    const interval = setInterval(() => {
+    const id = setInterval(() => {
       const info = (window as any).__cordexGetSelectionInfo?.();
-      if (info) setSelectionInfo(info);
-    }, 100); // Poll every 100ms to catch selection changes
-    return () => clearInterval(interval);
+      if (!info) {
+        if (prevInfoRef.current.hasSelection) {
+          setSelectionInfo({ hasSelection: false, preview: '', lineCount: 0 });
+          prevInfoRef.current = { hasSelection: false, preview: '', lineCount: 0 };
+        }
+        return;
+      }
+      if (
+        info.hasSelection !== prevInfoRef.current.hasSelection ||
+        info.preview !== prevInfoRef.current.preview ||
+        info.lineCount !== prevInfoRef.current.lineCount
+      ) {
+        setSelectionInfo(info);
+        prevInfoRef.current = info;
+      }
+    }, 100);
+    return () => clearInterval(id);
   }, []);
 
-  // Expose panel openers globally so Leftnav + extensions can trigger them
+  // ── Expose panel openers globally ──
   useEffect(() => {
     (window as any).__cordexOpenEmulator = () => {
-      // Toggle behavior: if already visible, close it; otherwise open it
       if (emulatorVisible) {
         setEmulatorVisible(false);
       } else {
@@ -111,7 +142,6 @@ export const EditorContainer: React.FC = () => {
       }
     };
     (window as any).__cordexOpenActions = () => {
-      // Toggle behavior: if already visible, close it; otherwise open it
       if (actionsVisible) {
         setActionsVisible(false);
       } else {
@@ -126,7 +156,6 @@ export const EditorContainer: React.FC = () => {
       if (!state.browserVisible && state.historyPanelVisible) dispatch({ type: 'TOGGLE_HISTORY_PANEL' });
       dispatch({ type: 'TOGGLE_BROWSER' });
     };
-    // Expose state getters so Leftnav can sync
     (window as any).__cordexGetPanelState = () => ({
       emulatorVisible,
       actionsVisible,
@@ -134,10 +163,14 @@ export const EditorContainer: React.FC = () => {
       chatVisible: state.chatVisible,
       historyPanelVisible: state.historyPanelVisible,
     });
+    (window as any).__cordexGetTabContent = (tabId: string) => {
+      const t = state.tabs.find((tab: Tab) => tab.id === tabId);
+      return t?.content ?? null;
+    };
   }, [emulatorVisible, actionsVisible, state.browserVisible, state.chatVisible, state.historyPanelVisible, dispatch]);
+
   const resizerRef    = useRef<HTMLDivElement>(null);
 
-  // ── Right-panel resize — use a ref so closure always reads current width
   const rightPanelWidthRef = useRef(350);
   useEffect(() => { rightPanelWidthRef.current = rightPanelWidth; }, [rightPanelWidth]);
 
@@ -149,9 +182,9 @@ export const EditorContainer: React.FC = () => {
     const onDown = (e: PointerEvent) => {
       e.preventDefault();
       const startX = e.clientX;
-      const startW = rightPanelWidthRef.current; // always current — no stale closure
+      const startW = rightPanelWidthRef.current;
       const onMove = (mv: PointerEvent) => {
-        const w = Math.min(700, Math.max(220, startW + (mv.clientX - startX)));
+        const w = Math.min(700, Math.max(260, startW - (mv.clientX - startX)));
         setRightPanelWidth(w);
         rightPanelWidthRef.current = w;
       };
@@ -173,7 +206,6 @@ export const EditorContainer: React.FC = () => {
     return () => el.removeEventListener('pointerdown', onDown);
   }, [rightPanelVisible]);
 
-  // ── toggleBrowser was missing its declaration ──────────────────────────
   const toggleBrowser = () => {
     if (!state.browserVisible && state.chatVisible) dispatch({ type: 'TOGGLE_CHAT_PANEL' });
     if (!state.browserVisible && state.historyPanelVisible) dispatch({ type: 'TOGGLE_HISTORY_PANEL' });
@@ -194,14 +226,12 @@ export const EditorContainer: React.FC = () => {
 
   const activeTab = state.tabs.find((t: Tab) => t.id === state.activeTabId);
 
-  // ── Documentation button: AI‑powered full project doc generator ──────
   const handleDoc = async () => {
     if (!state.projectRoot) return;
     setDocLoading(true);
     try {
       const res = await Cordex.ai.documentProject(state.projectRoot, state.aiSettings.analyze);
       if (res.ok) {
-        // Refresh the file tree so PROJECT_DOCS.md appears
         const result = await Cordex.fs.readDir(state.projectRoot);
         if (result?.ok) dispatch({ type: 'SET_FILE_TREE', tree: result.tree });
       } else {
@@ -238,15 +268,21 @@ export const EditorContainer: React.FC = () => {
       tab: {
         id: flowId, path: flowId,
         name: `Flow: ${activeTab.name}`,
-        content: '', language: 'flow', isDirty: false,
-        tabType: 'flow', flowSourceTabId: activeTab.id,
+        content: activeTab.content,
+        language: activeTab.language,
+        isDirty: false,
+        tabType: 'flow',
+        flowSourceTabId: activeTab.id,
+        projectRoot: (activeTab as any).projectRoot ?? null,
+        fileHash: activeTab.fileHash,
       },
     });
   }, [activeTab, state.tabs, dispatch]);
 
   return (
-    <main className="flex-1 flex flex-col min-w-0 bg-white overflow-hidden">
-      <header className="h-11 border-b border-gray-100 flex items-center px-3 gap-2 flex-shrink-0 bg-white">
+    <main className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <header className="h-11 border-b flex items-center px-3 gap-2 flex-shrink-0"
+        style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <PreviewBtn
             icon="public"
@@ -260,13 +296,15 @@ export const EditorContainer: React.FC = () => {
           <AIBtn icon="description"      label="Documentation" dark  title="Generate full project docs" shortcut="Ctrl+D" loading={docLoading}     onClick={handleDoc} />
           <AIBtn icon="auto_awesome"     label="Improve"             title="Analyze & improve"          shortcut="Ctrl+I" loading={improveLoading} onClick={handleImprove} hasSelection={selectionInfo.hasSelection} selectionPreview={selectionInfo.preview} />
           <AIBtn icon="medical_services" label="Bug Fix"             title="AI bug fix"                 shortcut="Ctrl+B" loading={bugLoading}     onClick={handleBugFix} hasSelection={selectionInfo.hasSelection} selectionPreview={selectionInfo.preview} />
+          <AgentPopover />
           <AIBtn icon="account_tree"     label="Flow"                title="Code flow diagram"                                                     onClick={handleFlow} />
-          <div className="w-px h-4 bg-gray-200 mx-0.5" />
+          <div className="w-px h-4 mx-0.5" style={{ backgroundColor: 'var(--border-color)' }} />
           <AIBtn icon="history"          label="History"             title="Local file history"         active={state.historyPanelVisible}           onClick={handleHistory} />
           <AIBtn icon="forum"            label="Chat"                title="Open AI Chat"               active={state.chatVisible}                   onClick={handleChat} />
-          <div className="w-px h-4 bg-gray-200 mx-0.5" />
+          <div className="w-px h-4 mx-0.5" style={{ backgroundColor: 'var(--border-color)' }} />
           <button title="AI Settings (Ctrl+,)" onClick={() => dispatch({ type: 'TOGGLE_AI_SETTINGS' })}
-            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors">
+            className="p-1.5 rounded-full transition-colors"
+            style={{ color: 'var(--text-muted)', ':hover': { color: 'var(--text-primary)', backgroundColor: 'var(--bg-secondary)' } }}>
             <span className="material-symbols-outlined text-[16px]">settings</span>
           </button>
         </div>
@@ -301,12 +339,29 @@ export const EditorContainer: React.FC = () => {
             <div
               ref={resizerRef}
               style={{
-                position: 'absolute', left: -4, top: 0, bottom: 0, width: 4,
-                cursor: 'col-resize', background: '#e2e8f0', transition: 'background 0.15s', zIndex: 10,
+                position: 'absolute', left: -5, top: 0, bottom: 0, width: 10,
+                cursor: 'col-resize', zIndex: 20,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#f97316')}
-              onMouseLeave={e => (e.currentTarget.style.background = '#e2e8f0')}
-            />
+              onMouseEnter={e => {
+                const bar = e.currentTarget.querySelector('.resizer-bar') as HTMLElement;
+                if (bar) bar.style.background = 'var(--accent)';
+              }}
+              onMouseLeave={e => {
+                const bar = e.currentTarget.querySelector('.resizer-bar') as HTMLElement;
+                if (bar) bar.style.background = 'var(--border-color)';
+              }}
+            >
+              <div
+                className="resizer-bar"
+                style={{
+                  width: 3, height: '100%',
+                  background: 'var(--border-color)',
+                  transition: 'background 0.15s',
+                  borderRadius: 2,
+                }}
+              />
+            </div>
           )}
 
           <div style={{ height: '100%', display: state.browserVisible ? 'flex' : 'none', flexDirection: 'column' }}>

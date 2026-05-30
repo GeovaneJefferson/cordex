@@ -297,7 +297,7 @@ const ProblemsPanel: React.FC<{ markers: MarkerItem[] }> = ({ markers }) => {
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-gray-300 select-none">
         <span className="material-symbols-outlined text-[32px]">check_circle</span>
         <span className="text-xs text-gray-400">No problems detected</span>
-        <span className="text-[10px] text-gray-300">TypeScript errors and warnings appear here in real-time</span>
+        <span className="text-[10px] text-gray-300">Errors and warnings appear here in real-time</span>
       </div>
     );
   }
@@ -317,14 +317,14 @@ const ProblemsPanel: React.FC<{ markers: MarkerItem[] }> = ({ markers }) => {
         <div key={file}>
           {/* File header */}
           <div style={{
-            padding: '4px 12px', fontSize: 10, fontWeight: 700, color: '#374151',
+            padding: '4px 12px', fontSize: 10, fontWeight: 700, color: '#513737ff',
             background: '#f8fafc', borderBottom: '1px solid #e2e8f0',
             display: 'flex', alignItems: 'center', gap: 6,
             position: 'sticky', top: 0, zIndex: 1,
           }}>
             <span className="material-symbols-outlined" style={{ fontSize: 12, color: '#94a3b8' }}>insert_drive_file</span>
             {file}
-            <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 400, marginLeft: 'auto' }}>
+            <span style={{ fontSize: 9, color: '#b89494ff', fontWeight: 400, marginLeft: 'auto' }}>
               {items.length} issue{items.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -334,14 +334,14 @@ const ProblemsPanel: React.FC<{ markers: MarkerItem[] }> = ({ markers }) => {
             return (
               <div key={i} style={{
                 display: 'flex', alignItems: 'flex-start', gap: 8,
-                padding: '5px 12px', borderBottom: '1px solid #f1f5f9',
-                fontSize: 11,
+                padding: '5px 12px', borderBottom: '1px solid var(--text-secondary)',  // problems division lines
+                fontSize: 11,  // Problem font size
               }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 13, color: sev.color, flexShrink: 0, marginTop: 1 }}>
                   {sev.icon}
                 </span>
-                <span style={{ flex: 1, color: '#1e293b', lineHeight: 1.5 }}>{m.message}</span>
-                <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0, marginTop: 1 }}>
+                <span style={{ flex: 1, color: 'var(--text-primary)', lineHeight: 1.5 }}>{m.message}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-primary)', flexShrink: 0, marginTop: 1 }}>
                   {m.startLineNumber}:{m.startColumn}
                 </span>
               </div>
@@ -397,7 +397,8 @@ const TerminalRow: React.FC<{
         />
       ) : (
         <span
-          className={`flex-1 text-[11px] truncate ${isActive ? 'text-gray-700 font-medium' : 'text-gray-500'}`}
+          className={`flex-1 text-[11px] truncate ${isActive ? 'font-medium' : ''}`}
+          style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}
           onDoubleClick={e => { e.stopPropagation(); setIsRenaming(true); setTempName(terminal.name); }}
           title={terminal.name}
         >

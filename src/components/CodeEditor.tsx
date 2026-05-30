@@ -6,6 +6,7 @@ import { useAppState } from '../store/AppContext';
 import { themes } from '../themes';
 import { Tab } from '../types';
 import { detectLanguage } from '../utils/fileIcons';
+import { usePythonLSP } from '../hooks/usePythonLSP';   // ✅ import the hook
 
 let _themesReady        = false;
 let _gdscriptReady      = false;
@@ -14,8 +15,6 @@ let _tsDefaultsReady    = false;
 let _ghostProvider: any = null;
 
 // ── Per-tab model cache: tabId → ITextModel ──────────────────────────────────
-// Keeping models alive across editor re-mounts prevents the TS worker from
-// firing diagnostics against a URI that no longer exists ("inmemory://model/N").
 const _modelCache = new Map<string, monaco.editor.ITextModel>();
 
 const THEME_KEY    = 'cordex_editor_theme';
@@ -41,6 +40,8 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
   const themeRef       = useRef(state.settings?.theme || storedTheme());
   const fontRef        = useRef(storedFontSize());
   const [wrapperSize, setWrapperSize] = useState({ width: 0, height: 0 });
+
+  usePythonLSP(tab?.language ?? '', state.projectRoot);
 
   // ── Observe wrapper size ──────────────────────────────────────────────────
   useEffect(() => {
@@ -154,24 +155,21 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
       }
 
       // ── Get or create the model for this tab ────────────────────────────
-      // Reusing the same ITextModel keeps the TS worker's URI table consistent.
-      // Without this, switching tabs disposes the old model while the worker is
-      // still mid-flight, producing "Could not find source file: inmemory://model/N".
       const lang  = mapLang(tab.language);
-      const tabUri = mon.Uri.parse(`inmemory://cordex/${tabId}`);
-
+      const tabUri = tab.path.startsWith('untitled::')
+        ? mon.Uri.parse(`file:///untitled/${tabId}.${tab.language || 'txt'}`)
+        : mon.Uri.parse(`file://${tab.path}`);
+        
       let model = _modelCache.get(tabId) ?? mon.editor.getModel(tabUri);
       if (!model || model.isDisposed()) {
         model = mon.editor.createModel(tab.content ?? '', lang, tabUri);
         _modelCache.set(tabId, model);
       } else {
-        // Sync content if the model already exists (e.g. after a tab switch)
         if (model.getValue() !== (tab.content ?? '')) {
           ignoreRef.current = true;
           model.applyEdits([{ range: model.getFullModelRange(), text: tab.content ?? '' }]);
           ignoreRef.current = false;
         }
-        // Sync language if it changed (e.g. Save As to a different extension)
         if (model.getLanguageId() !== lang) {
           mon.editor.setModelLanguage(model, lang);
         }
@@ -181,8 +179,6 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
 
       // ── Dispose existing editor widget, keep model alive ───────────────
       if (editorRef.current) {
-        // Detach model BEFORE disposing the editor so the worker doesn't see
-        // a model-removed event for a URI it still has queued diagnostics for.
         try { editorRef.current.setModel(null); } catch {}
         try { editorRef.current.dispose(); } catch {}
         editorRef.current = null;
@@ -336,9 +332,6 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
     return () => {
       cancelled = true;
       localSubscriptions.forEach(s => { try { s.dispose(); } catch {} });
-
-      // Detach the model from the widget BEFORE disposing the widget.
-      // The model stays alive in _modelCache so the TS worker URI remains valid.
       if (editorRef.current) {
         try { editorRef.current.setModel(null); } catch {}
         try { editorRef.current.dispose(); } catch {}
@@ -381,14 +374,11 @@ export const CodeEditor: React.FC<{ tabId: string }> = ({ tabId }) => {
     editor.setPosition({ lineNumber: line, column: 1 });
     editor.focus();
     dispatch({ type: 'GOTO_LINE', line: 0 });
-  }, [state.gotoLine]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.gotoLine]);
 
   // ── Tab closed → dispose cached model ───────────────────────────────────
   useEffect(() => {
     return () => {
-      // Only runs when this component is truly unmounted (tab removed, not just
-      // hidden).  We wait a tick so the TS worker can flush any in-flight
-      // diagnostics before the URI disappears.
       const cached = _modelCache.get(tabId);
       if (cached) {
         setTimeout(() => {

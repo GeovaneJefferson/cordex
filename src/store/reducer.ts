@@ -1,4 +1,4 @@
-import { AppState, AppAction, Tab } from '../types';
+import { AppState, AppAction, Tab, BugFixModalState, TodoItem } from '../types';
 
 export const initialState: AppState = {
   projectRoot: null,
@@ -11,7 +11,15 @@ export const initialState: AppState = {
   hardware: null,
   settings: { theme: 'atom-one-light' },
   analysisResult: '',
-  bugFixModal: { open: false, explanation: '', fixedCode: '', loading: false, error: '' },
+  bugFixModal: {
+    open: false,
+    phase: 'planning',
+    todos: [],
+    explanation: '',
+    fixedCode: '',
+    loading: false,
+    error: '',
+  },
   sidebarVisible: false,
   sidebarPanel: 'explorer',
   cursorLine: 1,
@@ -28,7 +36,6 @@ export const initialState: AppState = {
   llamaStatus: 'stopped',
   llamaError: null,
   contextMenu: null,
-  // ── New state ──────────────────────────────────────────────────────────
   browserVisible: false,
   commandPaletteOpen: false,
   historyPanelVisible: false,
@@ -174,6 +181,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         bugFixModal: {
           open: true,
+          phase: 'planning',
+          todos: [],
           explanation: '',
           fixedCode: '',
           loading: true,
@@ -184,17 +193,52 @@ export function reducer(state: AppState, action: AppAction): AppState {
         },
       };
 
+    case 'SET_BUG_FIX_TODOS':
+      return {
+        ...state,
+        bugFixModal: {
+          ...state.bugFixModal,
+          todos: action.todos,
+          phase: 'review',
+          loading: false,
+        },
+      };
+
+    case 'SET_TODO_STATUS':
+      return {
+        ...state,
+        bugFixModal: {
+          ...state.bugFixModal,
+          todos: state.bugFixModal.todos.map(todo =>
+            todo.id === action.id ? { ...todo, status: action.status } : todo
+          ),
+        },
+      };
+
+    case 'SET_BUG_FIX_PHASE':
+      return {
+        ...state,
+        bugFixModal: { ...state.bugFixModal, phase: action.phase },
+      };
+
     case 'SET_BUG_FIX_LOADING':
       return { ...state, bugFixModal: { ...state.bugFixModal, loading: action.loading } };
 
     case 'SET_BUG_FIX_RESULT':
       return {
         ...state,
-        bugFixModal: { ...state.bugFixModal, loading: false, error: '', explanation: action.explanation, fixedCode: action.fixedCode },
+        bugFixModal: {
+          ...state.bugFixModal,
+          loading: false,
+          error: '',
+          explanation: action.explanation,
+          fixedCode: action.fixedCode,
+          phase: 'done',
+        },
       };
 
     case 'SET_BUG_FIX_ERROR':
-      return { ...state, bugFixModal: { ...state.bugFixModal, loading: false, error: action.error } };
+      return { ...state, bugFixModal: { ...state.bugFixModal, loading: false, error: action.error, phase: 'planning' } };
 
     case 'CLOSE_BUG_FIX_MODAL':
       return { ...state, bugFixModal: { ...state.bugFixModal, open: false } };
@@ -248,8 +292,6 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ),
       };
 
-    // BUG FIX: update language after Save As so Monaco reinitialises to the
-    // correct mode and the session persists the right language string.
     case 'UPDATE_TAB_LANGUAGE':
       return {
         ...state,

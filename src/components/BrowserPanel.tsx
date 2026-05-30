@@ -131,7 +131,7 @@ const PhoneFrame: React.FC<{
   );
 };
 
-// ── Editable URL bar (unchanged) ───────────────────────────────────────────
+// ── Editable URL bar ───────────────────────────────────────────────────────
 const EditableUrlBar: React.FC<{
   url: string;
   onNavigate: (newUrl: string) => void;
@@ -161,10 +161,11 @@ const EditableUrlBar: React.FC<{
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6,
-      background: '#f8fafc', border: '1px solid #e2e8f0',
+      background: 'var(--bg-muted)',
+      border: '1px solid var(--border-default)',
       borderRadius: 8, padding: '4px 8px', flex: 1, minWidth: 0,
     }}>
-      <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#94a3b8', flexShrink: 0 }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 13, color: 'var(--text-muted)', flexShrink: 0 }}>
         {loading ? 'autorenew' : 'lock'}
       </span>
       {isEditing ? (
@@ -177,7 +178,7 @@ const EditableUrlBar: React.FC<{
           onKeyDown={handleKeyDown}
           style={{
             flex: 1, border: 'none', outline: 'none', background: 'transparent',
-            fontSize: 11.5, color: '#334155', fontFamily: 'monospace', padding: 0, minWidth: 0,
+            fontSize: 11.5, color: 'var(--text-primary)', fontFamily: 'monospace', padding: 0, minWidth: 0,
           }}
           autoFocus
         />
@@ -186,7 +187,7 @@ const EditableUrlBar: React.FC<{
           onClick={() => setIsEditing(true)}
           title="Click to edit URL"
           style={{
-            fontSize: 11.5, color: '#64748b', flex: 1,
+            fontSize: 11.5, color: 'var(--text-secondary)', flex: 1,
             textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: 'text',
           }}
         >
@@ -194,14 +195,14 @@ const EditableUrlBar: React.FC<{
         </span>
       )}
       <button onClick={onRefresh} title="Refresh"
-        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#94a3b8', flexShrink: 0 }}>
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
         <span className={`material-symbols-outlined ${loading ? 'animate-spin' : ''}`} style={{ fontSize: 13 }}>refresh</span>
       </button>
     </div>
   );
 };
 
-// ── Main BrowserPanel with drag‑to‑resize for desktop ───────────────────────
+// ── Main BrowserPanel ───────────────────────────────────────────────────────
 interface BrowserPanelProps {
   mode: 'phone' | 'desktop';
   onModeChange: (mode: 'phone' | 'desktop') => void;
@@ -229,10 +230,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const deviceMenuRef = useRef<HTMLDivElement>(null);
-  const dragStartX = useRef(0);
-  const dragStartWidth = useRef(0);
 
-  // ── Helper: check if URL is local ──────────────────────────────────────
   const isLocalUrl = useCallback((url: string) => {
     try {
       const { hostname } = new URL(url);
@@ -240,7 +238,6 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     } catch { return false; }
   }, []);
 
-  // ── Build iframe src ────────────────────────────────────────────────────
   const iframeSrc = (() => {
     if (!useProxy || isLocalUrl(currentUrl)) return currentUrl;
     return `${PROXY_BASE}${encodeURIComponent(currentUrl)}`;
@@ -266,7 +263,6 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   };
 
   const openInRightPanel = () => {
-    // Ensure the browser panel is visible
     if (!visible) {
       (window as any).__cordexToggleBrowser?.();
     }
@@ -277,7 +273,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     setLandscape(false);
   };
 
-  // ── Dragging logic for desktop width ───────────────────────────────────
+  // Dragging logic
   const dragStartWidthRef = useRef(0);
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -291,8 +287,6 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
       if (!isDraggingWidth) return;
       const containerRect = containerRef.current?.getBoundingClientRect();
       if (!containerRect) return;
-      // Desktop preview box right edge resize: dragStartWidthRef - (clientX delta to left)
-      // If user drags right, clientX increases, so width decreases (correct for right-edge resize)
       const dragDelta = e.clientX - (containerRect.left + containerRect.width);
       const newWidth = Math.max(320, dragStartWidthRef.current - dragDelta);
       setDesktopWidth(Math.min(containerRect.width - 50, newWidth));
@@ -307,7 +301,8 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
       window.removeEventListener('mouseup', onMouseUp);
     };
   }, [isDraggingWidth]);
-  // ── Close device menu on outside click ─────────────────────────────────
+
+  // Close device menu on outside click
   useEffect(() => {
     const fn = (e: MouseEvent) => {
       if (deviceMenuRef.current && !deviceMenuRef.current.contains(e.target as Node)) {
@@ -318,7 +313,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     return () => document.removeEventListener('mousedown', fn);
   }, []);
 
-  // ── Observe container size for phone scaling ───────────────────────────
+  // Observe container size
   const [containerSize, setContainerSize] = useState({ w: 600, h: 700 });
   useEffect(() => {
     if (!containerRef.current) return;
@@ -352,7 +347,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
           border: 'none',
           background: 'white',
           maxWidth: '100%',
-          transition: isDraggingWidth ? 'none' : 'width 0.1s ease-out', // smooth only after drag ends
+          transition: isDraggingWidth ? 'none' : 'width 0.1s ease-out',
         };
 
   const showLoading = visible && loading && !hasError;
@@ -361,18 +356,20 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     <div style={{
       position: 'absolute', inset: 0,
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: '#fff', gap: 12, padding: 24, textAlign: 'center',
+      background: 'var(--bg-app)', gap: 12, padding: 24, textAlign: 'center',
     }}>
-      <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#94a3b8' }}>error_outline</span>
-      <div style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>This page cannot be embedded</div>
-      <div style={{ fontSize: 11.5, color: '#94a3b8', maxWidth: 280, lineHeight: 1.5 }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 32, color: 'var(--text-muted)' }}>error_outline</span>
+      <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>This page cannot be embedded</div>
+      <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', maxWidth: 280, lineHeight: 1.5 }}>
         The website may have blocked iframe embedding. Try enabling the proxy or open in a new tab.
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button onClick={openInNewTab}
           style={{
-            padding: '6px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white',
-            color: '#0f172a', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            padding: '6px 14px', borderRadius: 8,
+            border: '1px solid var(--border-default)',
+            background: 'var(--bg-elevated)',
+            color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 6,
           }}>
           <span className="material-symbols-outlined" style={{ fontSize: 14 }}>open_in_new</span>
@@ -381,9 +378,12 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
         {!isLocalUrl(currentUrl) && (
           <button onClick={() => setUseProxy(v => !v)}
             style={{
-              padding: '6px 14px', borderRadius: 8, border: '1px solid #e2e8f0',
-              background: useProxy ? '#f0f9ff' : 'white', color: useProxy ? '#0284c7' : '#64748b',
-              fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', borderRadius: 8,
+              border: '1px solid var(--border-default)',
+              background: useProxy ? '#2d4a2d' : 'var(--bg-elevated)',   // hardcoded green proxy indicator, adjust if needed
+              color: useProxy ? '#aad94c' : 'var(--text-secondary)',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
             }}>
             <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
               {useProxy ? 'toggle_on' : 'toggle_off'}
@@ -398,22 +398,30 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   if (!visible) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc', userSelect: 'none' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%',
+      background: 'var(--bg-app)',
+      userSelect: 'none',
+    }}>
       {/* Toolbar */}
       <div style={{
         height: 40, display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px',
-        borderBottom: '1px solid #e2e8f0', background: 'white', flexShrink: 0,
+        borderBottom: '1px solid var(--border-default)',
+        background: 'var(--bg-elevated)',
+        flexShrink: 0,
       }}>
         {/* Mode switcher */}
-        <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 8, padding: 2, flexShrink: 0 }}>
+        <div style={{
+          display: 'flex', background: 'var(--bg-muted)', borderRadius: 8, padding: 2, flexShrink: 0,
+        }}>
           {(['phone', 'desktop'] as const).map(m => (
             <button key={m} onClick={() => switchMode(m)}
               title={m === 'phone' ? 'Mobile preview' : 'Desktop preview'}
               style={{
                 padding: '3px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600,
-                background: mode === m ? 'white' : 'transparent',
-                color: mode === m ? '#0f172a' : '#94a3b8',
+                background: mode === m ? 'var(--bg-subtle)' : 'transparent',
+                color: mode === m ? 'var(--text-primary)' : 'var(--text-muted)',
                 boxShadow: mode === m ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
                 transition: 'all 0.15s',
               }}>
@@ -431,20 +439,24 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 padding: '3px 8px 3px 6px', borderRadius: 7,
-                border: '1px solid #e2e8f0', background: deviceMenuOpen ? '#f1f5f9' : 'white',
-                cursor: 'pointer', fontSize: 11.5, color: '#334155', fontWeight: 500,
+                border: '1px solid var(--border-default)',
+                background: deviceMenuOpen ? 'var(--bg-muted)' : 'var(--bg-elevated)',
+                cursor: 'pointer', fontSize: 11.5,
+                color: 'var(--text-primary)', fontWeight: 500,
               }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#64748b' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 {selectedDevice.os === 'ios' ? 'phone_iphone' : selectedDevice.type === 'tablet' ? 'tablet_mac' : 'phone_android'}
               </span>
               {selectedDevice.label}
-              <span className="material-symbols-outlined" style={{ fontSize: 12, color: '#94a3b8' }}>expand_more</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 12, color: 'var(--text-muted)' }}>expand_more</span>
             </button>
             {deviceMenuOpen && (
               <div style={{
                 position: 'absolute', top: 'calc(100% + 4px)', left: 0,
-                background: 'white', border: '1px solid #e2e8f0', borderRadius: 10,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, minWidth: 180, padding: 4,
+                background: 'var(--bg-elevated)',      /* solid, never transparent */
+                border: '1px solid var(--border-default)',
+                borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.3)', zIndex: 100, minWidth: 180, padding: 4,
               }}>
                 {[
                   { label: 'iOS', devices: iosDevices },
@@ -452,19 +464,23 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                   { label: 'Tablet', devices: tabletDevices },
                 ].map(group => (
                   <div key={group.label}>
-                    <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94a3b8', padding: '6px 10px 2px' }}>{group.label}</div>
+                    <div style={{
+                      fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase',
+                      letterSpacing: '0.6px', color: 'var(--text-muted)',
+                      padding: '6px 10px 2px',
+                    }}>{group.label}</div>
                     {group.devices.map(d => (
                       <button key={d.id} onClick={() => { setSelectedDevice(d); setDeviceMenuOpen(false); }}
                         style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           width: '100%', padding: '5px 10px', border: 'none',
-                          background: selectedDevice.id === d.id ? '#f0f9ff' : 'transparent',
+                          background: selectedDevice.id === d.id ? 'var(--bg-muted)' : 'transparent',
                           cursor: 'pointer', borderRadius: 6, fontSize: 12,
-                          color: selectedDevice.id === d.id ? '#0284c7' : '#334155',
+                          color: selectedDevice.id === d.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                           fontWeight: selectedDevice.id === d.id ? 600 : 400,
                         }}>
                         <span>{d.label}</span>
-                        <span style={{ fontSize: 10, color: '#94a3b8' }}>{d.width}×{d.height}</span>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{d.width}×{d.height}</span>
                       </button>
                     ))}
                   </div>
@@ -481,9 +497,9 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               <button key={p.id} onClick={() => setDesktopWidth(p.width)}
                 style={{
                   padding: '3px 8px', borderRadius: 6, border: '1px solid',
-                  borderColor: desktopWidth === p.width ? '#0284c7' : '#e2e8f0',
-                  background: desktopWidth === p.width ? '#e0f2fe' : 'white',
-                  color: desktopWidth === p.width ? '#0284c7' : '#64748b',
+                  borderColor: desktopWidth === p.width ? '#f97316' : 'var(--border-default)',
+                  background: desktopWidth === p.width ? '#3a2c1a' : 'var(--bg-elevated)',
+                  color: desktopWidth === p.width ? '#f97316' : 'var(--text-secondary)',
                   fontSize: 11, fontWeight: desktopWidth === p.width ? 600 : 400,
                   cursor: 'pointer',
                 }}>
@@ -497,9 +513,10 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
         {mode === 'phone' && (
           <button onClick={() => setLandscape(l => !l)} title={landscape ? 'Portrait' : 'Landscape'}
             style={{
-              padding: '4px', borderRadius: 7, border: '1px solid #e2e8f0',
-              background: landscape ? '#f1f5f9' : 'white', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', color: '#64748b', flexShrink: 0,
+              padding: '4px', borderRadius: 7, border: '1px solid var(--border-default)',
+              background: landscape ? 'var(--bg-muted)' : 'var(--bg-elevated)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center',
+              color: 'var(--text-secondary)', flexShrink: 0,
             }}>
             <span className="material-symbols-outlined" style={{
               fontSize: 15,
@@ -510,7 +527,10 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
         )}
 
         {/* Dimensions badge */}
-        <div style={{ fontSize: 10.5, color: '#94a3b8', flexShrink: 0, fontFamily: 'monospace' }}>
+        <div style={{
+          fontSize: 10.5, color: 'var(--text-muted)', flexShrink: 0,
+          fontFamily: 'monospace',
+        }}>
           {mode === 'phone'
             ? `${landscape ? selectedDevice.height : selectedDevice.width} × ${landscape ? selectedDevice.width : selectedDevice.height}`
             : desktopWidth ? `${desktopWidth}px` : 'Full width'
@@ -522,9 +542,10 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
         <button onClick={() => setUseProxy(v => !v)}
           title={useProxy ? 'Proxy ON – click to disable' : 'Proxy OFF – click to enable'}
           style={{
-            padding: 4, borderRadius: 7, border: '1px solid #e2e8f0',
-            background: useProxy ? '#e0f2fe' : 'white', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', color: useProxy ? '#0284c7' : '#64748b', flexShrink: 0,
+            padding: 4, borderRadius: 7, border: '1px solid var(--border-default)',
+            background: useProxy ? '#2d4a2d' : 'var(--bg-elevated)',
+            color: useProxy ? '#aad94c' : 'var(--text-secondary)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0,
           }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
             {useProxy ? 'cloud' : 'cloud_off'}
@@ -533,24 +554,28 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
 
         <button onClick={openInNewTab} title="Open in new tab"
           style={{
-            padding: 4, borderRadius: 7, border: '1px solid #e2e8f0',
-            background: 'white', cursor: 'pointer', display: 'flex',
-            alignItems: 'center', color: '#64748b', flexShrink: 0,
+            padding: 4, borderRadius: 7, border: '1px solid var(--border-default)',
+            background: 'var(--bg-elevated)', cursor: 'pointer', display: 'flex',
+            alignItems: 'center', color: 'var(--text-secondary)', flexShrink: 0,
           }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>open_in_new</span>
         </button>
 
         <button onClick={openInRightPanel} title="Focus right panel"
           style={{
-            padding: 4, borderRadius: 7, border: '1px solid #e2e8f0',
-            background: 'white', cursor: 'pointer', display: 'flex',
-            alignItems: 'center', color: '#64748b', flexShrink: 0,
+            padding: 4, borderRadius: 7, border: '1px solid var(--border-default)',
+            background: 'var(--bg-elevated)', cursor: 'pointer', display: 'flex',
+            alignItems: 'center', color: 'var(--text-secondary)', flexShrink: 0,
           }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>picture_in_picture_alt</span>
         </button>
 
         <button onClick={onClose} title="Close preview"
-          style={{ padding: 4, borderRadius: 7, border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', flexShrink: 0, display: 'flex' }}>
+          style={{
+            padding: 4, borderRadius: 7, border: 'none', background: 'none',
+            cursor: 'pointer', color: 'var(--text-muted)',
+            flexShrink: 0, display: 'flex',
+          }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
         </button>
       </div>
@@ -560,9 +585,8 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
         flex: 1, overflow: mode === 'phone' ? 'hidden' : 'visible',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         padding: mode === 'phone' ? '16px 0' : 0,
-        background: mode === 'phone' ? '#e2e8f0' : 'white',
+        background: mode === 'phone' ? 'var(--bg-subtle)' : 'var(--bg-app)',
         position: 'relative',
-        clipPath: mode === 'phone' ? undefined : 'none',
       }}>
         {hasError ? (
           renderErrorFallback()
@@ -621,11 +645,12 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
           <div style={{
             position: 'absolute', inset: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(248,250,252,0.7)', pointerEvents: 'none',
+            background: 'rgba(10, 14, 20, 0.7)',  // based on --bg-app with opacity
+            pointerEvents: 'none',
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <span className="material-symbols-outlined animate-spin" style={{ fontSize: 24, color: '#94a3b8' }}>autorenew</span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>Loading {currentUrl}</span>
+              <span className="material-symbols-outlined animate-spin" style={{ fontSize: 24, color: 'var(--text-muted)' }}>autorenew</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading {currentUrl}</span>
             </div>
           </div>
         )}

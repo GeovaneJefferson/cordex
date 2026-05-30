@@ -112,28 +112,25 @@ async function buildDependencyManifest(code, filePath, projectRoot) {
 
 function buildSystemPrompt(manifest) {
   const manifestSection = manifest
-    ? `\nDependency context (for cross-file calls only):\n${manifest}\n`
+    ? `\nLocal imports context:\n${manifest}\n`
     : ''
 
-  return `You are a code flow analyzer. Analyze the given code and return ONLY a JSON object describing its RUNTIME LOGIC flow.
+  return `You are a code flow analyzer. Output ONLY a JSON object — no markdown, no explanation, no text before or after.
 
-STRICT RULES — READ CAREFULLY:
-1. Do NOT create nodes for import statements, require() calls, or module loading. These are FORBIDDEN.
-2. Do NOT create nodes for variable declarations at module scope unless they are critical to the logic.
-3. ONLY represent runtime behavior: function calls, conditions, loops, returns, error paths, data transforms.
-4. Start with id="entry" (type="entry"), end with id="exit" (type="exit").
-5. Node types: "entry" | "exit" | "call" | "decision" | "loop" | "error" | "value"
-6. Every node label must start with a verb (e.g. "Check driver", "Return result", "Handle error")
-7. Include the source line number in the "line" field for each node (best estimate from the code).
-8. Max 14 nodes. Group fine-grained steps into meaningful blocks.
-9. Every function called must be represented by its call, NOT the import that brought it in.
-10. Output must be pure JSON with NO trailing commas, NO comments, and all keys must be double-quoted.
-11. Escape any double-quotes inside string values (\\\"). Keep descriptions under 80 characters and avoid line breaks.
+Analyze the runtime logic and return this exact structure:
+{"nodes":[{"id":"entry","type":"entry","label":"Start program","description":"entry point","line":1},{"id":"n1","type":"call","label":"Do something","description":"what it does","line":5},{"id":"exit","type":"exit","label":"End program","description":"exit point","line":10}],"edges":[{"source":"entry","target":"n1","label":""},{"source":"n1","target":"exit","label":""}]}
+
+Rules:
+- First node must have id="entry" and type="entry"
+- Last node must have id="exit" and type="exit"
+- Node types allowed: entry | exit | call | decision | loop | error | value
+- Between 4 and 14 nodes total
+- Labels start with a verb: "Check X", "Call Y", "Return Z", "Handle error"
+- Skip import/require statements — do not create nodes for them
+- All JSON keys double-quoted, no trailing commas
 ${manifestSection}
-Return ONLY valid JSON, no markdown, no explanation:
-{"nodes":[{"id":"string","type":"string","label":"string","description":"string","line":0}],"edges":[{"source":"string","target":"string","label":"string"}]}`
+Output ONLY the JSON object, nothing else:`
 }
-
 // ── Ultra‑resilient JSON extraction ─────────────────────────────────────────
 function longestValidJsonSubstring(s) {
   let best = null;
@@ -239,7 +236,7 @@ module.exports = function () {
         systemPrompt,
         prompt: `Code to analyze:\n\`\`\`\n${code.slice(0, 8000)}\n\`\`\``,
         temperature: 0,
-        num_predict: 8192,
+        num_predict: 2048,
         stream: false,
       })
 
@@ -256,13 +253,18 @@ module.exports = function () {
       let flowData;
       try {
         flowData = robustJsonExtract(raw);
-        console.log('[analyze-flow] Extraction succeeded.');
+        console.log('[analyze-flow] Extraction succeeded. Keys:', Object.keys(flowData));
       } catch (err) {
         console.error('[analyze-flow] robustJsonExtract FAILED:', err.message);
-        return { nodes: [], edges: [], error: 'AI returned unparseable JSON. Try regenerating.' };
+        return { nodes: [], edges: [], error: `AI returned unparseable JSON.\n\nRaw response (first 600 chars):\n${raw.slice(0, 600)}` };
       }
 
-      return buildReactFlowGraph(flowData)
+      const graph = buildReactFlowGraph(flowData)
+      if (graph.nodes.length === 0) {
+        console.warn('[analyze-flow] Zero nodes after extraction. flowData:', JSON.stringify(flowData).slice(0, 400))
+        return { nodes: [], edges: [], error: `Model returned no nodes.\n\nRaw response (first 600 chars):\n${raw.slice(0, 600)}` }
+      }
+      return graph
     } catch (err) {
       console.error('[analyze-flow] Error:', err.message)
       return { nodes: [], edges: [], error: err.message }
@@ -577,7 +579,20 @@ function simulateExecution(code, nodes, lang) {
 }
 
 // ── React Flow graph builder ───────────────────────────────────────────────────
-function buildReactFlowGraph({ nodes = [], edges = [] }) {
+function buildReactFlowGraph(data) {
+  // Dig nodes/edges out of whatever nesting the model used
+  let nodes = data.nodes ?? data.graph?.nodes ?? data.flow?.nodes ?? data.flowGraph?.nodes ?? []
+  let edges = data.edges ?? data.graph?.edges ?? data.flow?.edges ?? data.flowGraph?.edges ?? []
+
+  // Filter out placeholder nodes the model echoed from the example template
+  nodes = nodes.filter(n =>
+    n.id && n.id !== 'string' &&
+    n.label && n.label !== 'string' && n.label !== 'Start' && n.label !== 'End' &&
+    typeof n.id === 'string' && typeof n.label === 'string'
+  )
+
+  if (nodes.length === 0) return { nodes: [], edges: [] }
+
   const adjList = {}
   const inDegree = {}
 

@@ -10,32 +10,60 @@ contextBridge.exposeInMainWorld('Cordex', {
     docstring: (p) => ipcRenderer.invoke('ai:docstring', p),
     fixError:    (p) => ipcRenderer.invoke('ai:fix-error', p),
     bugFixCode:  (p) => ipcRenderer.invoke('ai:bug-fix-code', p),
+    planTodos:   (p) => ipcRenderer.invoke('ai:plan-todos', p),
+
+    // ── Agent ──────────────────────────────────────────────────────────
+    agentRun: (payload, callbacks) => {
+      const { onPlan, onStepStart, onStepDone, onStepError, onDone, onError } = callbacks || {}
+
+      ipcRenderer.send('agent:run', payload)
+
+      const handlers = {
+        'agent:plan':       (_e, plan)             => onPlan?.(plan),
+        'agent:step:start': (_e, id)               => onStepStart?.(id),
+        'agent:step:done':  (_e, { id, result })   => onStepDone?.(id, result),
+        'agent:step:error': (_e, { id, error })    => onStepError?.(id, error),
+        'agent:done':       ()                     => { cleanup(); onDone?.() },
+        'agent:error':      (_e, err)              => { cleanup(); onError?.(err) },
+      }
+
+      const cleanup = () =>
+        Object.entries(handlers).forEach(([ch, fn]) => ipcRenderer.removeListener(ch, fn))
+      Object.entries(handlers).forEach(([ch, fn]) => ipcRenderer.on(ch, fn))
+
+      return cleanup
+    },
+
+    writeFile:     (p) => ipcRenderer.invoke('agent:write-file', p),
+    searchProject: (p) => ipcRenderer.invoke('agent:search', p),
     onChunk: (cb) => { ipcRenderer.on('ai:analyze:chunk', (_e, c) => cb(c)) },
     documentProject: (root, model) => ipcRenderer.invoke('ai:document-project', { projectRoot: root, model }),
     chatStream: (payload, callbacks) => {
-      const { onChunk, onDone, onError } = callbacks || {};
+      const { onChunk, onDone, onError, onThinking } = callbacks || {};
+     
       ipcRenderer.send('ai:chatStream:start', payload);
 
-      const chunkHandler = (_e, text) => onChunk?.(text);
+      const chunkHandler    = (_e, text) => onChunk?.(text);
+      const thinkingHandler = (_e, text) => onThinking?.(text);
       const doneHandler = () => {
-        ipcRenderer.removeListener('ai:chatStream:chunk', chunkHandler);
-        ipcRenderer.removeListener('ai:chatStream:done', doneHandler);
-        ipcRenderer.removeListener('ai:chatStream:error', errorHandler);
+        ipcRenderer.removeListener('ai:chatStream:chunk',    chunkHandler);
+        ipcRenderer.removeListener('ai:chatStream:thinking', thinkingHandler);
+        ipcRenderer.removeListener('ai:chatStream:done',     doneHandler);
+        ipcRenderer.removeListener('ai:chatStream:error',    errorHandler);
         onDone?.();
       };
-      const errorHandler = (_e, err) => {
-        doneHandler();
-        onError?.(err);
-      };
+      const errorHandler = (_e, err) => { doneHandler(); onError?.(err); };
 
-      ipcRenderer.on('ai:chatStream:chunk', chunkHandler);
-      ipcRenderer.on('ai:chatStream:done', doneHandler);
-      ipcRenderer.on('ai:chatStream:error', errorHandler);
+      ipcRenderer.on('ai:chatStream:chunk',    chunkHandler);
+      ipcRenderer.on('ai:chatStream:thinking', thinkingHandler);
+      ipcRenderer.on('ai:chatStream:done',     doneHandler);
+      ipcRenderer.on('ai:chatStream:error',    errorHandler);
 
       return () => {
-        ipcRenderer.removeListener('ai:chatStream:chunk', chunkHandler);
-        ipcRenderer.removeListener('ai:chatStream:done', doneHandler);
-        ipcRenderer.removeListener('ai:chatStream:error', errorHandler);
+        ipcRenderer.removeListener('ai:chatStream:chunk',    chunkHandler);
+        ipcRenderer.removeListener('ai:chatStream:thinking', thinkingHandler);
+        ipcRenderer.removeListener('ai:chatStream:done',     doneHandler);
+        ipcRenderer.removeListener('ai:chatStream:error',    errorHandler);
         ipcRenderer.send('ai:chatStream:abort');
       };
     },
@@ -101,6 +129,8 @@ contextBridge.exposeInMainWorld('Cordex', {
   lsp: {
     connect: (language, projectRoot) => ipcRenderer.invoke('lsp:connect', { language, projectRoot }),
     sendRequest: (language, method, params) => ipcRenderer.invoke('lsp:send', { language, method, params }),
+    startPython: (projectRoot) => ipcRenderer.invoke('lsp:start-python', { projectRoot }),
+    stopPython:  () => ipcRenderer.send('lsp:stop-python'),
   },
 
   fs: {
@@ -172,7 +202,7 @@ contextBridge.exposeInMainWorld('Cordex', {
 contextBridge.exposeInMainWorld('electronAPI', {
   saveFlow:       (fh, fd) => ipcRenderer.invoke('save-flow',    fh, fd),
   loadFlow:       (fh)    => ipcRenderer.invoke('load-flow',    fh),
-  analyzeFlow:    (code)  => ipcRenderer.invoke('analyze-flow', code),
+  analyzeFlow:    (p)     => ipcRenderer.invoke('analyze-flow', p),
   runFlow:        (p)     => ipcRenderer.invoke('flow:run',         p),
   simulateFlow:   (p) => ipcRenderer.invoke('flow:simulate',    p),
   detectFlowMode: (p) => ipcRenderer.invoke('flow:detect-mode', p),

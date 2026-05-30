@@ -91,7 +91,7 @@ function detectNVIDIA(name, vramMB) {
   const cudaVer = (run('nvcc --version') ?? '').match(/release\s+([\d.]+)/)?.[1] ?? null
   const vulkan  = hasVulkan()
   const backend = cudaVer ? 'cuda' : vulkan ? 'vulkan' : 'cpu'
-  const vram    = vramMB || 4096
+  const vram    = vramMB || 8192
   const layers  = backend !== 'cpu' ? layersForVRAM(vram, backend) : 0
   return result('nvidia', name || 'NVIDIA GPU', vram, backend, layers,
     cudaVer  ? `NVIDIA CUDA ${cudaVer} — ${vram}MB VRAM, ${layers} layers`
@@ -263,7 +263,7 @@ function layersForVRAM(vramMB, backend) {
   if (backend === 'metal') {
     if (vramMB >= 16384) return 99
     if (vramMB >= 8192)  return 40
-    if (vramMB >= 4096)  return 20
+    if (vramMB >= 8192)  return 20
     return 12
   }
   if (vramMB >= 24000) return 99

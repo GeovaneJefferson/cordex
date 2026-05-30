@@ -16,8 +16,8 @@ export interface Tab {
   savedContent?: string;
   tabType?: 'file' | 'flow';   // 'untitled' is not allowed – untitled files are still 'file'
   flowSourceTabId?: string;
-  fileHash?: string;       
-  projectRoot?: string;    
+  projectRoot?: string | null;
+  fileHash?: string;
 }
 
 export interface HardwareInfo {
@@ -50,8 +50,21 @@ export interface SelectionRange {
   endColumn: number;
 }
 
+export type TodoStatus = 'pending' | 'running' | 'done' | 'error';
+
+export interface TodoItem {
+  id: string;
+  label: string;
+  description: string;
+  status: TodoStatus;
+}
+
+export type BugFixPhase = 'planning' | 'review' | 'executing' | 'done';
+
 export interface BugFixModalState {
   open: boolean;
+  phase: BugFixPhase;
+  todos: TodoItem[];
   explanation?: string;
   fixedCode?: string;
   loading: boolean;
@@ -115,6 +128,9 @@ export type AppAction =
   | { type: 'GOTO_LINE'; line: number }
   | { type: 'OPEN_BUG_FIX_MODAL'; explanation?: string; fixedCode?: string; isSelection?: boolean; selectionRange?: SelectionRange; selectionText?: string }
   | { type: 'SET_BUG_FIX_LOADING'; loading: boolean }
+  | { type: 'SET_BUG_FIX_TODOS'; todos: TodoItem[] }
+  | { type: 'SET_TODO_STATUS'; id: string; status: TodoStatus }
+  | { type: 'SET_BUG_FIX_PHASE'; phase: BugFixPhase }
   | { type: 'SET_BUG_FIX_RESULT'; explanation: string; fixedCode: string }
   | { type: 'SET_BUG_FIX_ERROR'; error: string }
   | { type: 'CLOSE_BUG_FIX_MODAL' }
@@ -135,4 +151,4 @@ export type AppAction =
   | { type: 'UPDATE_TAB_LANGUAGE'; id: string; language: string }
   | { type: 'TOGGLE_CHAT_PANEL' }
   | { type: 'TOGGLE_HISTORY_PANEL' }
-  ;
+;

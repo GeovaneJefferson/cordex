@@ -94,9 +94,9 @@ function createWindow() {
       safeRequireHandler('./handlers/ollamaHandler.cjs', undefined)
       safeRequireHandler('./handlers/chatHandler.cjs', mainWin)
       safeRequireHandler('./handlers/aiHandler.cjs', mainWin)
+      safeRequireHandler('./handlers/agentHandler.cjs', undefined)
       safeRequireHandler('./services/aiRouter.cjs', mainWin)
 
-      safeRequireHandler('./handlers/lspHandler.cjs', undefined)
       safeRequireHandler('./utils/gitHandler.cjs', undefined)
       safeRequireHandler('./handlers/historyHandler.cjs', undefined)
     })
@@ -112,6 +112,9 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  safeRequireHandler('./handlers/lspHandler.cjs', undefined);
+  createWindow();
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })

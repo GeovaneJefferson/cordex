@@ -151,7 +151,7 @@ async function handleReason(ev, mainWindow, {
       stream: true,
       signal: ctrl.signal,
       temperature: expectJson ? 0.05 : 0.2,
-      num_predict: expectJson ? 2048 : 4096,
+      num_predict: expectJson ? 2048 : 8192,
     })
 
     let full = ''

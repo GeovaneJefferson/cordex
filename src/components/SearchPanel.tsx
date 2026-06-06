@@ -84,27 +84,57 @@ export const SearchPanel: React.FC = () => {
   }, [query, runSearch]);
 
   // ── replace in a single file ──────────────────────────────────────────────
+  // Replace in a file: opens it as a DIRTY (unsaved) tab — user must save manually
   const doReplace = async (filePath: string) => {
     if (!query || !replaceVal) return;
     try {
-      const content = await Cordex?.fs?.readFile?.(filePath);
-      if (!content?.ok) return;
+      const existingTab = state.tabs.find((t: Tab) => t.path === filePath);
+      let sourceContent: string;
+      if (existingTab) {
+        sourceContent = existingTab.content;
+      } else {
+        const res = await Cordex?.fs?.readFile?.(filePath);
+        if (!res?.ok) return;
+        sourceContent = res.content;
+      }
+
       const flags = caseSensitive ? 'g' : 'gi';
       const esc = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const pat = new RegExp(useRegex ? query : (wholeWord ? `\\b${esc}\\b` : esc), flags);
-      const next = content.content.replace(pat, replaceVal);
+      const next = sourceContent.replace(pat, replaceVal);
 
-      await Cordex?.fs?.writeFile?.(filePath, next);
+      if (existingTab) {
+        // Tab already open — update content in memory (dirty, NOT saved to disk)
+        dispatch({ type: 'UPDATE_TAB_CONTENT', id: existingTab.id, content: next });
+      } else {
+        // Open as a new dirty tab — do NOT write to disk
+        const ext = filePath.split('.').pop() ?? '';
+        const langMap: Record<string, string> = {
+          js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+          py: 'python', rs: 'rust', go: 'go', java: 'java', cpp: 'cpp', c: 'c',
+          html: 'html', css: 'css', json: 'json', md: 'markdown', gd: 'gdscript',
+        };
+        const name = filePath.split('/').pop() ?? filePath;
+        // Add with original content first (so savedContent is correct), then update to trigger isDirty
+        dispatch({
+          type: 'ADD_TAB',
+          tab: {
+            id: filePath, path: filePath, name,
+            content: sourceContent,
+            language: langMap[ext] ?? 'plaintext',
+            isDirty: false,
+            savedContent: sourceContent,
+            tabType: 'file',
+          },
+        });
+        dispatch({ type: 'UPDATE_TAB_CONTENT', id: filePath, content: next });
+      }
 
-      // If the file is open as a tab, update it in state too
-      const tab = state.tabs.find((t: Tab) => t.path === filePath);
-      if (tab) dispatch({ type: 'UPDATE_TAB_CONTENT', id: tab.id, content: next });
-
-      // Re-run search to refresh results
       await runSearch(query);
     } catch { }
   };
 
+  // Replace All — opens ALL affected files as dirty tabs; user must save each one manually
   const doReplaceAll = async () => {
     for (const r of results) await doReplace(r.path);
   };
@@ -114,12 +144,24 @@ export const SearchPanel: React.FC = () => {
     const tab = state.tabs.find((t: Tab) => t.path === filePath);
     if (tab) {
       dispatch({ type: 'SET_ACTIVE_TAB', id: tab.id });
+      // File already open — goto line immediately (editor is mounted)
+      if (line) {
+        setTimeout(() => dispatch({ type: 'GOTO_LINE', line }), 30);
+      }
     } else {
       await readFile(filePath);
-    }
-    if (line) {
-      // Small delay so the editor has time to mount before we scroll
-      setTimeout(() => dispatch({ type: 'GOTO_LINE', line }), 80);
+      if (line) {
+        // File just opened — retry until editor mounts and handles the goto
+        const tryGoto = (attempts = 0) => {
+          const ed = (window as any).__activeEditor;
+          if (ed) {
+            dispatch({ type: 'GOTO_LINE', line });
+          } else if (attempts < 15) {
+            setTimeout(() => tryGoto(attempts + 1), 60);
+          }
+        };
+        setTimeout(tryGoto, 80);
+      }
     }
   };
 

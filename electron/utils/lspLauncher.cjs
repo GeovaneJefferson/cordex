@@ -10,7 +10,7 @@ function launch(language, projectRoot) {
   const options = { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] }
   switch (language) {
     case 'python':
-      proc = spawn('pyright-langserver', ['--stdio'], options); break
+      proc = spawn('pylsp', ['--tcp', '--ws'], options); break
     case 'cpp':
       proc = spawn('clangd', [], options); break
     case 'go':

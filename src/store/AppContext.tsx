@@ -77,6 +77,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }, 1000);
   }, [state.projectRoot, state.tabs, state.activeTabId, state.aiSettings]);
+  
+  useEffect(() => {
+    if (state.projectRoot) {
+      console.log('Renderer sending project-root:', state.projectRoot);
+      Cordex.send('set-project-root', state.projectRoot);
+    }
+  }, [state.projectRoot]);
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
@@ -85,8 +92,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 };
 
-// FIX: was calling Cordex.llama.status() which doesn't exist.
-// Now uses Cordex.ollama.ping() (the actual IPC bridge).
 async function probeLlama(dispatch: React.Dispatch<AppAction>) {
   try {
     const res = await Cordex?.ollama?.ping?.();

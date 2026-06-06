@@ -1,4 +1,6 @@
 'use strict'
+let _profileMgr = null
+try { _profileMgr = require('../utils/profileManager.cjs') } catch {}
 const { ipcMain }      = require('electron')
 const os               = require('os')
 const { detectGPU }    = require('../utils/gpuDetect.cjs')

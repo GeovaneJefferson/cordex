@@ -47,6 +47,26 @@ interface CordexAPI {
     onReasonChunk:   (cb: (t: string) => void) => () => void;
   };
 
+  // ── Background agents ──────────────────────────────────────────────
+  agents: {
+    toggle: (type: string, enabled: boolean) => void;
+    onIssue: (cb: (issue: {
+      file: string;
+      line: number;
+      snippet: string;
+      severity: 'warning' | 'error';
+    }) => void) => () => void;
+    fixIssue: (payload: {
+      filePath: string;
+      line: number;
+      snippet: string;
+      description: string;
+    }) => Promise<{ ok: boolean; newContent?: string; error?: string }>;
+  };
+
+  // ── Generic IPC send (used by agent communication) ────────────────
+  send: (channel: string, ...args: any[]) => void;
+
   // ── Local history ─────────────────────────────────────────────────────
   history: {
     save:    (args: { filePath: string; content: string }) => Promise<{ ok: boolean; saved?: boolean; error?: string }>;
@@ -150,4 +170,9 @@ interface ElectronAPI {
 interface Window {
   Cordex: CordexAPI;
   electronAPI: ElectronAPI;
+
+  // ── Global helpers exposed by ChatPanel / DiagnosticsManager ──
+  __cordexSetChatInput: (text: string) => void;
+  __cordexSendToChat: (msg: string) => void;
+  __clearFileDiagnostics: (absolutePath: string) => void;
 }

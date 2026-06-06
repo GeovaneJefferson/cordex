@@ -14,7 +14,7 @@ export interface Tab {
   language: string;
   isDirty: boolean;
   savedContent?: string;
-  tabType?: 'file' | 'flow';   // 'untitled' is not allowed – untitled files are still 'file'
+  tabType?: 'file' | 'flow';
   flowSourceTabId?: string;
   projectRoot?: string | null;
   fileHash?: string;
@@ -80,7 +80,15 @@ export interface AISettings {
   bugfix: string;
   docstring: string;
   flow: string;
+  thinkingModel: string;      // optional heavier model for reasoning tasks
+  useThinkingFor: string[];   // which tasks use the thinking model: 'chat' | 'flow' | 'bugfix'
+  agentModels: {
+    document: string;
+    fixCode: string;
+  };
 }
+
+export type SplitMode = 'none' | 'horizontal' | 'vertical' | 'grid';
 
 export interface AppState {
   projectRoot: string | null;
@@ -88,7 +96,11 @@ export interface AppState {
   tabs: Tab[];
   activeTabId: string | null;
   splitTabId: string | null;
+  splitTabId2: string | null;
+  splitTabId3: string | null;
+  splitMode: SplitMode;
   terminalVisible: boolean;
+  chatVisible: boolean;
   hardware: HardwareInfo | null;
   settings: Record<string, any>;
   analysisResult: string;
@@ -107,6 +119,7 @@ export interface AppState {
   commandPaletteOpen: boolean;
   chatVisible: boolean;
   historyPanelVisible: boolean;
+  backgroundAgents: Record<'fix-code' | 'document', boolean>;
 }
 
 export type AppAction =
@@ -137,6 +150,7 @@ export type AppAction =
   | { type: 'TOGGLE_AI_SETTINGS' }
   | { type: 'SET_AI_SETTINGS'; settings: Partial<AISettings> }
   | { type: 'SET_SPLIT_TAB'; tabId: string | null }
+  | { type: 'SET_SPLIT_MODE'; mode: SplitMode; tabIds?: (string | null)[] }
   | { type: 'SET_LLAMA_STATUS'; status: 'stopped' | 'starting' | 'running' | 'error'; error?: string | null }
   | { type: 'SET_CONTEXT_MENU'; menu: AppState['contextMenu'] }
   | { type: 'TOGGLE_BROWSER' }
@@ -151,4 +165,5 @@ export type AppAction =
   | { type: 'UPDATE_TAB_LANGUAGE'; id: string; language: string }
   | { type: 'TOGGLE_CHAT_PANEL' }
   | { type: 'TOGGLE_HISTORY_PANEL' }
+  | { type: 'TOGGLE_BACKGROUND_AGENT'; payload: { type: string; enabled: boolean } }
 ;

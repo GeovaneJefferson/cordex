@@ -8,148 +8,119 @@ import { CustomActionsPanel } from './CustomActionsPanel';
 import { ChatPanel } from './ChatPanel';
 import { LocalHistoryPanel } from './LocalHistoryPanel';
 import { AgentPopover } from './AgentPopover';
-import { useAI } from '../hooks/useAI';
+import { CommandPalette } from './CommandPalette';
 import { Tab } from '../types';
 import { useAppState } from '../store/AppContext';
+import { BugFloatingPanel } from './BugFloatingPanel';
 
 const Cordex = (window as any).Cordex;
 
-const AIBtn: React.FC<{
-  icon: string; label?: string; dark?: boolean;
-  loading?: boolean; onClick?: () => void; title: string; shortcut?: string;
-  active?: boolean; iconStyle?: React.CSSProperties; hasSelection?: boolean; selectionPreview?: string;
-}> = ({ icon, label, dark, loading, onClick, title, shortcut, active, iconStyle, hasSelection, selectionPreview }) => {
-  const btnTitle = `${title}${shortcut ? ` (${shortcut})` : ''}${hasSelection ? ' — using selected code' : ''}`;
-  return (
-    <div style={{ position: 'relative' }}>
-      <button title={btnTitle} onClick={onClick} disabled={loading}
-        className={`flex items-center gap-1 px-3 py-1 rounded-full text-[11.5px] font-medium
-          transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-95
-          ${dark
-            ? 'bg-gray-900 text-white hover:bg-gray-700'
-            : active || hasSelection
-              ? 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-          }`}
-        style={
-          dark
-            ? { backgroundColor: 'var(--gray-900)', color: 'white' }
-            : active || hasSelection
-              ? {
-                  backgroundColor: 'var(--accent-light)',
-                  color: 'var(--accent)',
-                  borderColor: 'var(--accent-border)',
-                }
-              : {
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  borderColor: 'var(--border-color)',
-                }
-        }
-      >
-        <span
-          className={`material-symbols-outlined text-[14px] ${loading ? 'animate-spin' : ''}`}
-          style={iconStyle}
-        >
-          {loading ? 'autorenew' : icon}
-        </span>
-        {label}
-      </button>
-      {hasSelection && (
-        <span style={{
-          position: 'absolute', top: -4, right: -4,
-          width: 16, height: 16, background: 'var(--success)', borderRadius: '50%',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'white', fontSize: '10px', fontWeight: 'bold', border: '2px solid var(--bg-primary)'
-        }} title={`Selection active: ${selectionPreview}`}>✓</span>
-      )}
-    </div>
-  );
-};
-
-const PreviewBtn: React.FC<{
-  icon: string; title: string; active?: boolean; onClick: () => void;
-}> = ({ icon, title, active, onClick }) => (
+// ── Compact icon button (theme-aware) ──────────────────────────────────────
+const IconBtn: React.FC<{
+  icon: string; label?: string; title: string;
+  onClick?: () => void; active?: boolean;
+}> = ({ icon, label, title, onClick, active }) => (
   <button
     title={title}
     onClick={onClick}
     style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      width: 28, height: 28, borderRadius: 7,
-      border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border-color)'}`,
-      background: active ? 'var(--accent-light)' : 'var(--bg-primary)',
-      color: active ? 'var(--accent-hover)' : 'var(--text-muted)',
-      cursor: 'pointer',
-      transition: 'all 0.15s',
-      flexShrink: 0,
+      display: 'flex', alignItems: 'center', gap: 4,
+      padding: '4px 10px', borderRadius: 9999,
+      fontSize: 11.5, fontWeight: 600,
+      border: `1px solid ${active ? 'var(--border-default)' : 'transparent'}`,
+      backgroundColor: active ? 'var(--bg-muted)' : 'transparent',
+      color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+      cursor: 'pointer', userSelect: 'none', transition: 'all 0.15s',
+    }}
+    onMouseEnter={e => {
+      e.currentTarget.style.backgroundColor = 'var(--bg-subtle)';
+      e.currentTarget.style.borderColor = 'var(--border-default)';
+    }}
+    onMouseLeave={e => {
+      e.currentTarget.style.backgroundColor = active ? 'var(--bg-muted)' : 'transparent';
+      e.currentTarget.style.borderColor = active ? 'var(--border-default)' : 'transparent';
     }}
   >
-    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>
+    <span className="material-symbols-outlined text-[14px]">{icon}</span>
+    {label && <span>{label}</span>}
+  </button>
+);
+
+// ── Browser toggle button ──────────────────────────────────────────────────
+const PreviewBtn: React.FC<{ active?: boolean; onClick: () => void }> = ({ active, onClick }) => (
+  <button
+    title="Browser preview — localhost:8081"
+    onClick={onClick}
+    style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      width: 28, height: 28, borderRadius: 7,
+      border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border-default)'}`,
+      background: active ? 'var(--bg-muted)' : 'transparent',
+      color: active ? 'var(--accent)' : 'var(--text-muted)',
+      cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0,
+    }}
+  >
+    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>public</span>
+  </button>
+);
+
+// ── Command palette trigger (VSCode-style top search bar) ──────────────────
+const CommandBar: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+  <button
+    onClick={onClick}
+    title="Search files, content, and symbols (append : to go to line or @ to go to symbol)"
+    style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      flex: '0 1 320px', maxWidth: 600, minWidth: 160,
+      height: 26, borderRadius: 6,
+      border: '1px solid var(--border-default)',
+      background: 'var(--bg-elevated)',
+      color: 'var(--text-muted)',
+      cursor: 'text', padding: '0 8px',
+      fontSize: 11.5, transition: 'border-color 0.15s, box-shadow 0.15s',
+    }}
+    onMouseEnter={e => {
+      e.currentTarget.style.borderColor = 'var(--accent)';
+      e.currentTarget.style.boxShadow = '0 0 0 2px var(--accent)22';
+    }}
+    onMouseLeave={e => {
+      e.currentTarget.style.borderColor = 'var(--border-default)';
+      e.currentTarget.style.boxShadow = 'none';
+    }}
+  >
+    <span className="material-symbols-outlined" style={{ fontSize: 13 }}>search</span>
+    <span style={{ flex: 1, textAlign: 'left' }}>Search files, content, symbols...</span>
+    <span style={{ fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>Ctrl+P</span>
   </button>
 );
 
 export const EditorContainer: React.FC = () => {
   const { state, dispatch } = useAppState();
-  const { analyzeCode, bugFixActiveTab, improveActiveTab } = useAI();
 
-  const [docLoading,     setDocLoading]     = useState(false);
-  const [improveLoading, setImproveLoading] = useState(false);
-  const [bugLoading,     setBugLoading]     = useState(false);
-  const [selectionInfo, setSelectionInfo] = useState<{ hasSelection: boolean; preview: string; lineCount: number }>({ hasSelection: false, preview: '', lineCount: 0 });
-
-  const [browserMode,       setBrowserMode]      = useState<'phone' | 'desktop'>('desktop');
-  const [emulatorVisible,   setEmulatorVisible]  = useState(false);
-  const [actionsVisible,    setActionsVisible]    = useState(false);
-  const [rightPanelWidth, setRightPanelWidth] = useState(350);
+  const [browserMode, setBrowserMode] = useState<'phone' | 'desktop'>('desktop');
+  const [emulatorVisible,  setEmulatorVisible]  = useState(false);
+  const [actionsVisible,   setActionsVisible]    = useState(false);
+  const [rightPanelWidth,  setRightPanelWidth]   = useState(350);
   const [isDraggingResizer, setIsDraggingResizer] = useState(false);
-  const containerRef  = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const resizerRef   = useRef<HTMLDivElement>(null);
+  const rightPanelWidthRef = useRef(350);
 
-  // ── Stable selection polling (NO BLINKING) ─────────────────
-  const prevInfoRef = useRef<typeof selectionInfo>(selectionInfo);
+  useEffect(() => { rightPanelWidthRef.current = rightPanelWidth; }, [rightPanelWidth]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      const info = (window as any).__cordexGetSelectionInfo?.();
-      if (!info) {
-        if (prevInfoRef.current.hasSelection) {
-          setSelectionInfo({ hasSelection: false, preview: '', lineCount: 0 });
-          prevInfoRef.current = { hasSelection: false, preview: '', lineCount: 0 };
-        }
-        return;
-      }
-      if (
-        info.hasSelection !== prevInfoRef.current.hasSelection ||
-        info.preview !== prevInfoRef.current.preview ||
-        info.lineCount !== prevInfoRef.current.lineCount
-      ) {
-        setSelectionInfo(info);
-        prevInfoRef.current = info;
-      }
-    }, 100);
-    return () => clearInterval(id);
-  }, []);
-
-  // ── Expose panel openers globally ──
+  // Expose panel openers globally
   useEffect(() => {
     (window as any).__cordexOpenEmulator = () => {
-      if (emulatorVisible) {
-        setEmulatorVisible(false);
-      } else {
-        setEmulatorVisible(true);
-        setActionsVisible(false);
-        if (state.browserVisible) dispatch({ type: 'TOGGLE_BROWSER' });
-        if (state.chatVisible)    dispatch({ type: 'TOGGLE_CHAT_PANEL' });
-      }
+      if (emulatorVisible) { setEmulatorVisible(false); return; }
+      setEmulatorVisible(true); setActionsVisible(false);
+      if (state.browserVisible) dispatch({ type: 'TOGGLE_BROWSER' });
+      if (state.chatVisible)    dispatch({ type: 'TOGGLE_CHAT_PANEL' });
     };
     (window as any).__cordexOpenActions = () => {
-      if (actionsVisible) {
-        setActionsVisible(false);
-      } else {
-        setActionsVisible(true);
-        setEmulatorVisible(false);
-        if (state.browserVisible) dispatch({ type: 'TOGGLE_BROWSER' });
-        if (state.chatVisible)    dispatch({ type: 'TOGGLE_CHAT_PANEL' });
-      }
+      if (actionsVisible) { setActionsVisible(false); return; }
+      setActionsVisible(true); setEmulatorVisible(false);
+      if (state.browserVisible) dispatch({ type: 'TOGGLE_BROWSER' });
+      if (state.chatVisible)    dispatch({ type: 'TOGGLE_CHAT_PANEL' });
     };
     (window as any).__cordexToggleBrowser = () => {
       if (!state.browserVisible && state.chatVisible) dispatch({ type: 'TOGGLE_CHAT_PANEL' });
@@ -157,8 +128,7 @@ export const EditorContainer: React.FC = () => {
       dispatch({ type: 'TOGGLE_BROWSER' });
     };
     (window as any).__cordexGetPanelState = () => ({
-      emulatorVisible,
-      actionsVisible,
+      emulatorVisible, actionsVisible,
       browserVisible: state.browserVisible,
       chatVisible: state.chatVisible,
       historyPanelVisible: state.historyPanelVisible,
@@ -168,11 +138,6 @@ export const EditorContainer: React.FC = () => {
       return t?.content ?? null;
     };
   }, [emulatorVisible, actionsVisible, state.browserVisible, state.chatVisible, state.historyPanelVisible, dispatch]);
-
-  const resizerRef    = useRef<HTMLDivElement>(null);
-
-  const rightPanelWidthRef = useRef(350);
-  useEffect(() => { rightPanelWidthRef.current = rightPanelWidth; }, [rightPanelWidth]);
 
   const rightPanelVisible = state.browserVisible || state.chatVisible || state.historyPanelVisible || emulatorVisible || actionsVisible;
 
@@ -226,38 +191,6 @@ export const EditorContainer: React.FC = () => {
 
   const activeTab = state.tabs.find((t: Tab) => t.id === state.activeTabId);
 
-  const handleDoc = async () => {
-    if (!state.projectRoot) return;
-    setDocLoading(true);
-    try {
-      const res = await Cordex.ai.documentProject(state.projectRoot, state.aiSettings.analyze);
-      if (res.ok) {
-        const result = await Cordex.fs.readDir(state.projectRoot);
-        if (result?.ok) dispatch({ type: 'SET_FILE_TREE', tree: result.tree });
-      } else {
-        alert('Documentation generation failed: ' + res.error);
-      }
-    } catch (e: any) {
-      alert('Error: ' + e.message);
-    } finally {
-      setDocLoading(false);
-    }
-  };
-
-  const handleImprove = async () => {
-    if (!activeTab) return;
-    setImproveLoading(true);
-    try { await improveActiveTab(); }
-    finally { setImproveLoading(false); }
-  };
-
-  const handleBugFix = async () => {
-    if (!activeTab) return;
-    setBugLoading(true);
-    try { await bugFixActiveTab(); }
-    finally { setBugLoading(false); }
-  };
-
   const handleFlow = useCallback(() => {
     if (!activeTab || activeTab.tabType === 'flow') return;
     const flowId = `flow::${activeTab.id}`;
@@ -280,33 +213,33 @@ export const EditorContainer: React.FC = () => {
   }, [activeTab, state.tabs, dispatch]);
 
   return (
-    <main className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
-      <header className="h-11 border-b flex items-center px-3 gap-2 flex-shrink-0"
-        style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <PreviewBtn
-            icon="public"
-            title="Browser preview — localhost:8081"
-            active={state.browserVisible}
-            onClick={toggleBrowser}
-          />
+    <main className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ backgroundColor: 'var(--bg-app)' }}>
+      {/* Header / Toolbar — 3-column grid: left | center | right */}
+      <header
+        style={{
+          height: 44, borderBottom: '1px solid var(--border-default)',
+          backgroundColor: 'var(--bg-app)', display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'center', padding: '0 10px', gap: 8, flexShrink: 0,
+        }}
+      >
+        {/* Left: browser preview button */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 6 }}>
+          <PreviewBtn active={state.browserVisible} onClick={toggleBrowser} />
         </div>
-        <div className="flex-1" />
-        <div className="flex items-center gap-1.5">
-          <AIBtn icon="description"      label="Documentation" dark  title="Generate full project docs" shortcut="Ctrl+D" loading={docLoading}     onClick={handleDoc} />
-          <AIBtn icon="auto_awesome"     label="Improve"             title="Analyze & improve"          shortcut="Ctrl+I" loading={improveLoading} onClick={handleImprove} hasSelection={selectionInfo.hasSelection} selectionPreview={selectionInfo.preview} />
-          <AIBtn icon="medical_services" label="Bug Fix"             title="AI bug fix"                 shortcut="Ctrl+B" loading={bugLoading}     onClick={handleBugFix} hasSelection={selectionInfo.hasSelection} selectionPreview={selectionInfo.preview} />
+
+        {/* Center: command palette — always truly centered */}
+        <div>
+          <CommandBar onClick={() => dispatch({ type: 'TOGGLE_COMMAND_PALETTE' })} />
+        </div>
+
+        {/* Right: Agent, Flow, | History, Chat */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
           <AgentPopover />
-          <AIBtn icon="account_tree"     label="Flow"                title="Code flow diagram"                                                     onClick={handleFlow} />
-          <div className="w-px h-4 mx-0.5" style={{ backgroundColor: 'var(--border-color)' }} />
-          <AIBtn icon="history"          label="History"             title="Local file history"         active={state.historyPanelVisible}           onClick={handleHistory} />
-          <AIBtn icon="forum"            label="Chat"                title="Open AI Chat"               active={state.chatVisible}                   onClick={handleChat} />
-          <div className="w-px h-4 mx-0.5" style={{ backgroundColor: 'var(--border-color)' }} />
-          <button title="AI Settings (Ctrl+,)" onClick={() => dispatch({ type: 'TOGGLE_AI_SETTINGS' })}
-            className="p-1.5 rounded-full transition-colors"
-            style={{ color: 'var(--text-muted)', ':hover': { color: 'var(--text-primary)', backgroundColor: 'var(--bg-secondary)' } }}>
-            <span className="material-symbols-outlined text-[16px]">settings</span>
-          </button>
+          <IconBtn icon="account_tree" label="Flow"    title="Code flow diagram"     onClick={handleFlow} />
+          <div style={{ width: 1, height: 16, background: 'var(--border-default)', margin: '0 2px' }} />
+          <IconBtn icon="history"      label="History" title="Local file history"     active={state.historyPanelVisible} onClick={handleHistory} />
+          <IconBtn icon="forum"        label="Chat"    title="Open AI Chat"           active={state.chatVisible}         onClick={handleChat} />
         </div>
       </header>
 
@@ -315,27 +248,19 @@ export const EditorContainer: React.FC = () => {
       <div ref={containerRef} className="flex-1 flex overflow-hidden min-h-0">
         <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
           <SplitEditor />
+          <BugFloatingPanel />
           {isDraggingResizer && (
-            <div
-              style={{
-                position: 'absolute', inset: 0, zIndex: 99,
-                cursor: 'col-resize',
-              }}
-            />
+            <div style={{ position: 'absolute', inset: 0, zIndex: 99, cursor: 'col-resize' }} />
           )}
         </div>
 
-        <div
-          style={{
-            width: (state.browserVisible || state.chatVisible || state.historyPanelVisible || emulatorVisible || actionsVisible) ? rightPanelWidth : 0,
-            flexShrink: 0,
-            minHeight: 0,
-            position: 'relative',
-            overflow: 'hidden',
-            transition: isDraggingResizer ? 'none' : 'width 180ms ease',
-          }}
-        >
-          {(state.browserVisible || state.chatVisible || state.historyPanelVisible || emulatorVisible || actionsVisible) && (
+        {/* Right panel (browser / chat / history / emulator / actions) */}
+        <div style={{
+          width: rightPanelVisible ? rightPanelWidth : 0,
+          flexShrink: 0, minHeight: 0, position: 'relative', overflow: 'hidden',
+          transition: isDraggingResizer ? 'none' : 'width 180ms ease',
+        }}>
+          {rightPanelVisible && (
             <div
               ref={resizerRef}
               style={{
@@ -349,55 +274,33 @@ export const EditorContainer: React.FC = () => {
               }}
               onMouseLeave={e => {
                 const bar = e.currentTarget.querySelector('.resizer-bar') as HTMLElement;
-                if (bar) bar.style.background = 'var(--border-color)';
+                if (bar) bar.style.background = 'var(--border-default)';
               }}
             >
-              <div
-                className="resizer-bar"
-                style={{
-                  width: 3, height: '100%',
-                  background: 'var(--border-color)',
-                  transition: 'background 0.15s',
-                  borderRadius: 2,
-                }}
-              />
+              <div className="resizer-bar" style={{ width: 3, height: '100%', background: 'var(--border-default)', transition: 'background 0.15s', borderRadius: 2 }} />
             </div>
           )}
 
           <div style={{ height: '100%', display: state.browserVisible ? 'flex' : 'none', flexDirection: 'column' }}>
-            <BrowserPanel
-              mode={browserMode}
-              onModeChange={setBrowserMode}
-              visible={state.browserVisible}
-              onClose={() => dispatch({ type: 'TOGGLE_BROWSER' })}
-            />
+            <BrowserPanel mode={browserMode} onModeChange={setBrowserMode} visible={state.browserVisible} onClose={() => dispatch({ type: 'TOGGLE_BROWSER' })} />
           </div>
-
           <div style={{ height: '100%', display: state.chatVisible ? 'flex' : 'none', flexDirection: 'column' }}>
             <ChatPanel />
           </div>
-
           <div style={{ height: '100%', display: state.historyPanelVisible ? 'flex' : 'none', flexDirection: 'column' }}>
             <LocalHistoryPanel onClose={() => dispatch({ type: 'TOGGLE_HISTORY_PANEL' })} />
           </div>
-
           <div style={{ height: '100%', display: emulatorVisible ? 'flex' : 'none', flexDirection: 'column' }}>
-            <AndroidEmulatorPanel
-              visible={emulatorVisible}
-              onClose={() => setEmulatorVisible(false)}
-            />
+            <AndroidEmulatorPanel visible={emulatorVisible} onClose={() => setEmulatorVisible(false)} />
           </div>
-
           <div style={{ height: '100%', display: actionsVisible ? 'flex' : 'none', flexDirection: 'column' }}>
-            <CustomActionsPanel
-              projectRoot={state.projectRoot}
-              onClose={() => setActionsVisible(false)}
-            />
+            <CustomActionsPanel projectRoot={state.projectRoot} onClose={() => setActionsVisible(false)} />
           </div>
         </div>
       </div>
 
       <BottomPanel />
+      {state.commandPaletteOpen && <CommandPalette />}
     </main>
   );
 };

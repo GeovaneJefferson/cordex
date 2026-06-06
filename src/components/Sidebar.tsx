@@ -58,7 +58,9 @@ const FileTreeNode: React.FC<TreeNodeProps> = React.memo(({
             id: node.id, path: node.path, name: node.name, type: node.type
           }));
           e.dataTransfer.effectAllowed = 'move';
+          (window as any).__cordexDragging = true;
         }}
+        onDragEnd={() => { (window as any).__cordexDragging = false; }}
         onDragOver={e => { if (!isFolder) return; e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={e => {

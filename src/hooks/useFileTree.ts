@@ -32,6 +32,7 @@ export function useFileTree() {
         isDirty: false,
       };
       dispatch({ type: 'ADD_TAB', tab });
+      (window as any).__cordexLastOpenedTabId = filePath;
       if (intoSplit) dispatch({ type: 'SET_SPLIT_TAB', tabId: filePath });
     }
   }, [dispatch]);

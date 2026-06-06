@@ -90,17 +90,33 @@ export const BottomPanel: React.FC = () => {
 
   // ── Problems: Monaco markers ──────────────────────────────────────────
   const [markers, setMarkers] = useState<MarkerItem[]>([]);
+  const markersRef = React.useRef<MarkerItem[]>([]);
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
 
   useEffect(() => {
     const handleMarkersChanged = (e: Event) => {
+      markersRef.current = (e as CustomEvent).detail ?? [];
       const detail = (e as CustomEvent).detail as MarkerItem[];
       // Only show errors and warnings in Problems, not informational/hint markers.
       setMarkers((detail ?? []).filter(m => m.severity === 8 || m.severity === 4));
     };
     window.addEventListener('cordex:markers-changed', handleMarkersChanged);
-    return () => window.removeEventListener('cordex:markers-changed', handleMarkersChanged);
+
+    // Expose markers globally so agents (Fix Code) can read them
+    (window as any).__cordexGetMarkers = () => markersRef.current;
+
+    // Open Problems tab from status bar click
+    const openProblems  = () => setActivePanel('Problems');
+    const openTerminal  = () => setActivePanel('Terminal');
+    window.addEventListener('cordex:open-problems', openProblems);
+    window.addEventListener('cordex:open-terminal', openTerminal);
+
+    return () => {
+      window.removeEventListener('cordex:markers-changed', handleMarkersChanged);
+      window.removeEventListener('cordex:open-problems', openProblems);
+      window.removeEventListener('cordex:open-terminal', openTerminal);
+    };
   }, []);
 
   // Count errors/warnings for tab badge

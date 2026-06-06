@@ -218,6 +218,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
 }) => {
   const [selectedDevice, setSelectedDevice] = useState<Device>(PHONE_DEVICES[0]);
   const [landscape, setLandscape] = useState(false);
+  const [realSize,   setRealSize]   = useState(false);
   const [desktopWidth, setDesktopWidth] = useState(0);
   const [isDraggingWidth, setIsDraggingWidth] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
@@ -328,11 +329,13 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   const phoneW = landscape ? selectedDevice.height : selectedDevice.width;
   const phoneH = landscape ? selectedDevice.width  : selectedDevice.height;
   const CHROME_H = 20;
-  const scale = Math.min(
+  // realSize: show phone at actual pixel dimensions (scroll if needed)
+  // default: scale to fit panel
+  const scaleFit = Math.min(
     (containerSize.w - 48) / (phoneW + CHROME_H * 2),
     (containerSize.h - 72) / (phoneH + CHROME_H * 2),
-    1
   );
+  const scale = realSize ? 1 : scaleFit;
 
   const iosDevices   = PHONE_DEVICES.filter(d => d.os === 'ios');
   const androidDevices = PHONE_DEVICES.filter(d => d.os === 'android');
@@ -523,6 +526,25 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               transform: landscape ? 'rotate(90deg)' : 'rotate(0deg)',
               transition: 'transform 0.2s',
             }}>screen_rotation</span>
+          </button>
+        )}
+
+        {/* Real size toggle (phone/tablet only) */}
+        {mode === 'phone' && (
+          <button
+            onClick={() => setRealSize(r => !r)}
+            title={realSize ? 'Fit to panel' : 'Real size (1:1 pixels)'}
+            style={{
+              padding: '3px 7px', borderRadius: 7, border: '1px solid var(--border-default)',
+              background: realSize ? 'var(--accent)' : 'var(--bg-elevated)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
+              color: realSize ? '#fff' : 'var(--text-secondary)', flexShrink: 0,
+              fontSize: 10, fontWeight: 700,
+            }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>
+              {realSize ? 'zoom_out_map' : 'zoom_in_map'}
+            </span>
+            1:1
           </button>
         )}
 

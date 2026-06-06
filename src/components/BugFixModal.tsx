@@ -8,14 +8,12 @@ export const BugFixModal: React.FC = () => {
   const { state, dispatch } = useAppState();
   const { open, phase, todos, explanation, fixedCode, loading, isSelection, error } = state.bugFixModal;
 
-  // ✅ All hooks must be before any conditional return
   const handleExecute = useCallback(async () => {
     const activeTab = state.tabs.find(t => t.id === state.activeTabId);
     if (!activeTab) return;
 
     dispatch({ type: 'SET_BUG_FIX_PHASE', phase: 'executing' });
 
-    // Animate todos one by one as "running" while the single model call runs
     const animateTodos = async () => {
       for (const todo of todos) {
         dispatch({ type: 'SET_TODO_STATUS', id: todo.id, status: 'running' });
@@ -23,7 +21,7 @@ export const BugFixModal: React.FC = () => {
       }
     };
 
-    const { selectionText, selectionRange } = state.bugFixModal as any;
+    const { selectionText } = state.bugFixModal as any;
     const codeToFix = isSelection && selectionText ? selectionText : activeTab.content;
     const modeStr = (state.bugFixModal as any).mode ?? 'bugfix';
 
@@ -37,7 +35,6 @@ export const BugFixModal: React.FC = () => {
     ]);
 
     if (result?.ok) {
-      // Mark all todos done
       for (const todo of todos) {
         dispatch({ type: 'SET_TODO_STATUS', id: todo.id, status: 'done' });
       }
@@ -50,32 +47,33 @@ export const BugFixModal: React.FC = () => {
     }
   }, [state, todos, isSelection, dispatch]);
 
-  // Early return after all hooks
   if (!open) return null;
 
   const handleClose = () => dispatch({ type: 'CLOSE_BUG_FIX_MODAL' });
 
-  const replaceRange = (content: string, range: any, replacement: string) => {
-    const lines = content.split('\n');
-    const before = lines.slice(0, range.startLineNumber - 1);
-    const after = lines.slice(range.endLineNumber);
-    const startLine = lines[range.startLineNumber - 1] ?? '';
-    const endLine = lines[range.endLineNumber - 1] ?? '';
-    const prefix = startLine.slice(0, range.startColumn - 1);
-    const suffix = endLine.slice(range.endColumn - 1);
-    return [...before, prefix + replacement + suffix, ...after].join('\n');
-  };
-
-  const handleApplyFix = () => {
+  // ── Find Solution → opens AI Chat with the fix suggestion ──
+  const handleFindSolution = () => {
     const activeTab = state.tabs.find(t => t.id === state.activeTabId);
-    if (!activeTab || !fixedCode) return;
-    const { isSelection, selectionRange } = state.bugFixModal as any;
-    if (isSelection && selectionRange) {
-      dispatch({ type: 'UPDATE_TAB_CONTENT', id: activeTab.id, content: replaceRange(activeTab.content, selectionRange, fixedCode) });
-    } else {
-      dispatch({ type: 'UPDATE_TAB_CONTENT', id: activeTab.id, content: fixedCode });
+    if (!activeTab) return;
+
+    // Build a helpful chat message
+    const fileMention = `@${activeTab.name}`;
+    const parts = [`**AI Suggestion for ${activeTab.name}**`];
+    if (explanation) parts.push(explanation);
+    if (fixedCode) {
+      parts.push('```' + (activeTab.language || '') + '\n' + fixedCode + '\n```');
     }
-    handleClose();
+    const message = parts.join('\n\n');
+
+    // Open chat panel if not already visible
+    if (!state.chatVisible) {
+      dispatch({ type: 'TOGGLE_CHAT_PANEL' });
+    }
+
+    // Pre‑fill the chat input (global setter exposed by ChatPanel)
+    (window as any).__cordexSetChatInput?.(message);
+
+    dispatch({ type: 'CLOSE_BUG_FIX_MODAL' });
   };
 
   const statusIcon: Record<string, string> = {
@@ -125,11 +123,19 @@ export const BugFixModal: React.FC = () => {
           <div className="flex items-center gap-2">
             {phase === 'done' && fixedCode && (
               <button
-                onClick={handleApplyFix}
-                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                onClick={() => {
+                  const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+                  if (!activeTab) return;
+                  // Open chat panel
+                  if (!state.chatVisible) dispatch({ type: 'TOGGLE_CHAT_PANEL' });
+                  // Pre‑fill with just file mention + explanation
+                  (window as any).__cordexSetChatInput?.(`@${activeTab.name}: ${explanation || 'Bug fix suggestion'}`);
+                  dispatch({ type: 'CLOSE_BUG_FIX_MODAL' });
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors"
               >
-                <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                Apply Fix
+                <span className="material-symbols-outlined text-[16px]">chat</span>
+                Find Solution
               </button>
             )}
             <button onClick={handleClose} className="p-1 hover:bg-gray-200 rounded-full">
@@ -138,7 +144,7 @@ export const BugFixModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Body */}
+        {/* Body – unchanged except for the second "Apply" button replaced with "Find Solution" */}
         {error ? (
           <div className="flex-1 flex items-center justify-center bg-red-50 p-8">
             <div className="text-center max-w-md">
@@ -236,10 +242,18 @@ export const BugFixModal: React.FC = () => {
                 </div>
                 {fixedCode && (
                   <button
-                    onClick={handleApplyFix}
-                    className="text-xs px-2 py-0.5 bg-green-600 hover:bg-green-700 text-white rounded font-semibold transition-colors"
+                    onClick={() => {
+                      const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+                      if (!activeTab) return;
+                      // Open chat panel
+                      if (!state.chatVisible) dispatch({ type: 'TOGGLE_CHAT_PANEL' });
+                      // Pre‑fill with just file mention + explanation
+                      (window as any).__cordexSetChatInput?.(`@${activeTab.name}: ${explanation || 'Bug fix suggestion'}`);
+                      dispatch({ type: 'CLOSE_BUG_FIX_MODAL' });
+                    }}
+                    className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold transition-colors"
                   >
-                    Apply
+                    Find Solution
                   </button>
                 )}
               </div>

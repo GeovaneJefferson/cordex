@@ -1,51 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import type { Extension, ExtensionCapability, ExtensionCategory } from '../extensions/types';
+import React, { useState } from 'react';
+import type { Extension } from '../extensions/types';
 import { getExtensions, setExtensionState } from '../extensions/registry';
 
-const CAT_LABELS: Record<ExtensionCategory, string> = {
-  language: 'Language Support', formatter: 'Formatters', linter: 'Linters',
-  theme: 'Themes', tool: 'Tools', ai: 'AI',
+// Bundle categories — these are the only category shown now
+const BUNDLE_IDS = ['bundle-python', 'bundle-typescript', 'bundle-java', 'bundle-gdscript', 'bundle-rust'];
+
+const LANG_ICONS: Record<string, { color: string; icon: string }> = {
+  'bundle-python':     { color: '#3b82f6', icon: 'code' },
+  'bundle-typescript': { color: '#3178c6', icon: 'code' },
+  'bundle-java':       { color: '#f89820', icon: 'coffee' },
+  'bundle-gdscript':   { color: '#478cbf', icon: 'videogame_asset' },
+  'bundle-rust':       { color: '#f97316', icon: 'settings_applications' },
+  'bundle-sql':        { color: '#0ea5e9', icon: 'storage' },
+  'android-emulator':  { color: '#22c55e', icon: 'android' },
 };
-const CAT_ORDER: ExtensionCategory[] = ['language', 'ai', 'formatter', 'linter', 'tool', 'theme'];
 
 export const ExtensionPanel: React.FC = () => {
   const [extensions, setExtensions] = useState<Extension[]>(getExtensions);
-  const [search, setSearch]         = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
+  const [expanded,   setExpanded]   = useState<string | null>(null);
 
   const refresh = () => setExtensions(getExtensions());
 
-  const filtered = extensions.filter(e =>
-    !search || e.name.toLowerCase().includes(search.toLowerCase()) ||
-    e.description.toLowerCase().includes(search.toLowerCase()) ||
-    e.category.includes(search.toLowerCase())
-  );
-
-  const grouped = CAT_ORDER.reduce((acc, cat) => {
-    const list = filtered.filter(e => e.category === cat);
-    if (list.length) acc.push({ cat, list });
-    return acc;
-  }, [] as { cat: ExtensionCategory; list: Extension[] }[]);
-
   const handleInstall = async (ext: Extension) => {
     setInstalling(ext.id);
-
-    // For extensions with real installCommands, print them to the terminal
     if (ext.installCommands?.length) {
       for (const cmd of ext.installCommands) {
         (window as any).Cordex?.terminal?.writeActive?.(cmd + '\n');
       }
-      // Give IPC a moment, then mark installed
       await new Promise(r => setTimeout(r, 600));
     } else {
       await new Promise(r => setTimeout(r, 900));
     }
-
     setExtensionState(ext.id, { status: 'installed', enabled: true });
     setInstalling(null);
     refresh();
-
-    // If this extension opens a panel, trigger it immediately after install
     if (ext.panelType === 'android-emulator') {
       setTimeout(() => (window as any).__cordexOpenEmulator?.(), 300);
     }
@@ -61,197 +50,198 @@ export const ExtensionPanel: React.FC = () => {
     refresh();
   };
 
+  // Split into language bundles and tools
+  const bundles = extensions.filter(e => e.id.startsWith('bundle-'));
+  const tools   = extensions.filter(e => !e.id.startsWith('bundle-'));
   const installedCount = extensions.filter(e => e.status === 'installed').length;
 
-  return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'var(--bg-app)' }}>
-      {/* Header */}
-      <div style={{ padding:'10px 12px 8px', borderBottom:'1px solid var(--border-default)', flexShrink:0 }}>
-        <div style={{ fontSize:11, fontWeight:700, color:'var(--text-primary)', marginBottom:6 }}>
-          Extensions
-          <span style={{ marginLeft:6, fontSize:9, background:'var(--bg-elevated)', color:'var(--text-muted)',
-            padding:'1px 6px', borderRadius:10, fontWeight:600 }}>
-            {installedCount} installed
-          </span>
-        </div>
-        <input
-          value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search extensions…"
-          style={{ width:'100%', fontSize:11, padding:'5px 8px', borderRadius:6,
-            border:'1px solid var(--border-default)', outline:'none', background:'var(--bg-elevated)', color:'var(--text-primary)' }}
-        />
-      </div>
+  const renderBundle = (ext: Extension) => {
+    const isInstalled  = ext.status === 'installed';
+    const isInstalling = installing === ext.id;
+    const isExpanded   = expanded === ext.id;
+    const meta = LANG_ICONS[ext.id] ?? { color: 'var(--accent)', icon: 'extension' };
 
-      {/* List */}
-      <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', minHeight:0, padding:'4px 0' }}
-        className="sidebar-scroll">
-        {grouped.map(({ cat, list }) => (
-          <div key={cat}>
-            <div style={{ padding:'8px 12px 3px', fontSize:9, fontWeight:700,
-              textTransform:'uppercase', letterSpacing:'0.6px', color:'var(--text-muted)' }}>
-              {CAT_LABELS[cat]}
-            </div>
-            {list.map(ext => (
-              <ExtensionRow
-                key={ext.id} ext={ext}
-                isInstalling={installing === ext.id}
-                onInstall={() => handleInstall(ext)}
-                onToggle={() => handleToggle(ext)}
-                onUninstall={() => handleUninstall(ext)}
-              />
-            ))}
+    return (
+      <div
+        key={ext.id}
+        style={{
+          margin: '6px 8px',
+          border: `1.5px solid ${isInstalled ? meta.color + '44' : 'var(--border-default)'}`,
+          borderRadius: 10,
+          overflow: 'hidden',
+          background: isInstalled ? meta.color + '08' : 'var(--bg-app)',
+          transition: 'all 0.15s',
+        }}
+      >
+        {/* Main row */}
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer' }}
+          onClick={() => setExpanded(isExpanded ? null : ext.id)}
+        >
+          {/* Language icon badge */}
+          <div style={{
+            width: 36, height: 36, borderRadius: 9,
+            background: meta.color + '18',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: meta.color }}>
+              {meta.icon}
+            </span>
           </div>
-        ))}
-        {filtered.length === 0 && (
-          <div style={{ padding:'24px 12px', textAlign:'center', color:'var(--text-muted)', fontSize:12 }}>
-            No extensions match "{search}"
+
+          {/* Info */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{ext.name}</span>
+              {isInstalled && ext.enabled && (
+                <span style={{ fontSize: 9, background: meta.color + '22', color: meta.color, padding: '1px 6px', borderRadius: 8, fontWeight: 700 }}>ACTIVE</span>
+              )}
+              {isInstalled && !ext.enabled && (
+                <span style={{ fontSize: 9, background: 'var(--bg-muted)', color: 'var(--text-muted)', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>OFF</span>
+              )}
+            </div>
+            <p style={{ fontSize: 10, color: 'var(--text-muted)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {ext.description}
+            </p>
+          </div>
+
+          {/* Chevron */}
+          <span className="material-symbols-outlined" style={{
+            fontSize: 16, color: 'var(--text-muted)',
+            transform: isExpanded ? 'rotate(90deg)' : 'none',
+            transition: 'transform 0.15s', flexShrink: 0,
+          }}>chevron_right</span>
+        </div>
+
+        {/* Expanded detail */}
+        {isExpanded && (
+          <div style={{ padding: '0 12px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+            {/* Capabilities chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, margin: '8px 0' }}>
+              {ext.capabilities?.map(cap => (
+                <span
+                  key={cap.id}
+                  title={cap.description}
+                  style={{
+                    fontSize: 10, padding: '2px 8px', borderRadius: 12,
+                    background: meta.color + '14', color: meta.color,
+                    border: `1px solid ${meta.color}30`, fontWeight: 600,
+                  }}
+                >
+                  {cap.label}
+                </span>
+              ))}
+            </div>
+
+            {/* Install note */}
+            {ext.installNote && (
+              <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.5 }}>
+                {ext.installNote}
+              </p>
+            )}
+
+            {/* Install commands preview */}
+            {ext.installCommands && ext.installCommands.length > 0 && !isInstalled && (
+              <div style={{
+                background: 'var(--bg-elevated)', borderRadius: 6, padding: '6px 8px',
+                marginBottom: 10, maxHeight: 80, overflowY: 'auto',
+              }}>
+                {ext.installCommands.map((cmd, i) => (
+                  <p key={i} style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+                    {cmd}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {!isInstalled ? (
+                <button
+                  onClick={() => handleInstall(ext)}
+                  disabled={isInstalling}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '7px 12px', borderRadius: 8,
+                    background: meta.color, color: '#fff',
+                    border: 'none', cursor: isInstalling ? 'not-allowed' : 'pointer',
+                    fontSize: 12, fontWeight: 700,
+                    opacity: isInstalling ? 0.6 : 1, transition: 'opacity 0.15s',
+                  }}
+                >
+                  <span className={`material-symbols-outlined text-[14px] ${isInstalling ? 'animate-spin' : ''}`}>
+                    {isInstalling ? 'autorenew' : 'download'}
+                  </span>
+                  {isInstalling ? 'Installing…' : `Install ${ext.name}`}
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => handleToggle(ext)}
+                    style={{
+                      flex: 1, padding: '6px 10px', borderRadius: 8,
+                      background: ext.enabled ? 'var(--bg-muted)' : meta.color + '22',
+                      border: `1px solid ${ext.enabled ? 'var(--border-default)' : meta.color + '44'}`,
+                      color: ext.enabled ? 'var(--text-secondary)' : meta.color,
+                      fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    {ext.enabled ? 'Disable' : 'Enable'}
+                  </button>
+                  <button
+                    onClick={() => handleUninstall(ext)}
+                    style={{
+                      padding: '6px 10px', borderRadius: 8,
+                      background: 'transparent', border: '1px solid #ef444440',
+                      color: '#ef4444', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    Remove
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
-    </div>
-  );
-};
-
-// ── Individual extension row ────────────────────────────────────────────────
-const ExtensionRow: React.FC<{
-  ext: Extension; isInstalling: boolean;
-  onInstall: () => void; onToggle: () => void; onUninstall: () => void;
-}> = ({ ext, isInstalling, onInstall, onToggle, onUninstall }) => {
-  const [expanded, setExpanded] = useState(false);
-  const isInstalled = ext.status === 'installed';
+    );
+  };
 
   return (
-    <div style={{ borderBottom:'1px solid var(--border-default)' }}>
-      <div
-        onClick={() => setExpanded(e => !e)}
-        style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'8px 12px',
-          cursor:'pointer', transition:'background 0.1s' }}
-        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
-        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-      >
-        {/* Icon */}
-        <div style={{ width:30, height:30, borderRadius:7, background:`${ext.iconColor}18`,
-          display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-          <span className="material-symbols-outlined" style={{ fontSize:16, color:ext.iconColor }}>
-            {ext.icon}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-app)' }}>
+      {/* Header */}
+      <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid var(--border-default)', flexShrink: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+          Extensions
+          <span style={{
+            fontSize: 9, background: 'var(--bg-elevated)', color: 'var(--text-muted)',
+            padding: '1px 6px', borderRadius: 10, fontWeight: 600,
+          }}>
+            {installedCount} installed
           </span>
         </div>
-
-        {/* Info */}
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:1 }}>
-            <span style={{ fontSize:12, fontWeight:600, color:'var(--text-primary)' }}>{ext.name}</span>
-            <span style={{ fontSize:9, color:'var(--text-muted)' }}>v{ext.version}</span>
-            {isInstalled && ext.enabled && (
-              <span style={{ fontSize:9, background:'rgba(16, 185, 129, 0.12)', color:'#15803d',
-                padding:'1px 5px', borderRadius:8, fontWeight:600 }}>ON</span>
-            )}
-            {isInstalled && !ext.enabled && (
-              <span style={{ fontSize:9, background:'var(--bg-elevated)', color:'var(--text-muted)',
-                padding:'1px 5px', borderRadius:8, fontWeight:600 }}>OFF</span>
-            )}
-          </div>
-          <div style={{ fontSize:10, color:'var(--text-muted)', lineHeight:1.5,
-            overflow:'hidden', display:'-webkit-box',
-            WebkitLineClamp: expanded ? 999 : 3,
-            WebkitBoxOrient:'vertical' }}>
-            {ext.description}
-          </div>
-          <div style={{ fontSize:9, color:'var(--text-muted)', marginTop:1 }}>by {ext.author}</div>
-        </div>
-
-        {/* Action */}
-        <div onClick={e => e.stopPropagation()} style={{ flexShrink:0 }}>
-          {isInstalled ? (
-            <div style={{ display:'flex', gap:4 }}>
-              <button onClick={onToggle} style={{
-                fontSize:10, padding:'3px 8px', borderRadius:5, cursor:'pointer', fontWeight:600,
-                background: ext.enabled ? 'rgba(254, 226, 226, 0.8)' : 'rgba(220, 248, 231, 0.85)',
-                color:      ext.enabled ? '#dc2626' : '#16a34a',
-                border: `1px solid ${ext.enabled ? 'rgba(252, 165, 165, 0.8)' : 'rgba(134, 239, 172, 0.8)'}`,
-              }}>
-                {ext.enabled ? 'Disable' : 'Enable'}
-              </button>
-            </div>
-          ) : (
-            <button onClick={onInstall} disabled={isInstalling} style={{
-              fontSize:10, padding:'3px 10px', borderRadius:5, cursor:'pointer', fontWeight:600,
-              background: isInstalling ? 'var(--bg-elevated)' : '#f97316',
-              color:      isInstalling ? 'var(--text-muted)'  : 'white',
-              border: 'none', display:'flex', alignItems:'center', gap:4,
-              opacity: isInstalling ? 0.8 : 1,
-            }}>
-              {isInstalling && (
-                <span className="material-symbols-outlined" style={{ fontSize:12, animation:'spin 1s linear infinite' }}>
-                  autorenew
-                </span>
-              )}
-              {isInstalling ? 'Installing…' : 'Install'}
-            </button>
-          )}
-        </div>
+        <p style={{ fontSize: 10, color: 'var(--text-muted)', margin: 0 }}>
+          One click installs everything for your language.
+        </p>
       </div>
 
-      {/* Expanded detail */}
-      {expanded && (
-        <div style={{ padding:'0 12px 10px 52px' }}>
-          {ext.capabilities.length > 0 && (
-            <div style={{ marginBottom:6 }}>
-              <div style={{ fontSize:9, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', marginBottom:4 }}>
-                Features
-              </div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-                {ext.capabilities.map(cap => (
-                  <span key={cap.id} title={cap.description} style={{
-                    fontSize:10, padding:'2px 7px', borderRadius:10,
-                    background:`${ext.iconColor}12`, color:ext.iconColor,
-                    border:`1px solid ${ext.iconColor}30`, cursor:'help',
-                  }}>
-                    {cap.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {ext.installCommands && ext.installCommands.length > 0 && (
-            <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize:9, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', marginBottom:4 }}>
-                Install Commands
-              </div>
-              <div style={{ background:'var(--text-primary)', borderRadius:6, padding:'7px 10px', fontFamily:'monospace', fontSize:10, lineHeight:1.7 }}>
-                {ext.installCommands.map((cmd, i) => (
-                  <div key={i} style={{ color: cmd.startsWith('#') ? 'var(--text-muted)' : '#86efac' }}>{cmd}</div>
-                ))}
-              </div>
-            </div>
-          )}
-          {ext.installNote && !ext.installCommands?.length && (
-            <div style={{ fontSize:10, color:'var(--text-muted)', background:'var(--bg-elevated)',
-              borderRadius:5, padding:'5px 8px', fontFamily:'monospace' }}>
-              ℹ {ext.installNote}
-            </div>
-          )}
-          {ext.panelType && isInstalled && ext.enabled && (
-            <button
-              onClick={() => {
-                if (ext.panelType === 'android-emulator') (window as any).__cordexOpenEmulator?.();
-              }}
-              style={{ marginTop:4, fontSize:10, padding:'3px 10px', borderRadius:5, border:'none',
-                background:'#22c55e', color:'white', cursor:'pointer', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
-              <span className="material-symbols-outlined" style={{ fontSize:12 }}>open_in_new</span>
-              Open Panel
-            </button>
-          )}
-          {isInstalled && (
-            <button onClick={onUninstall} style={{
-              marginTop:6, fontSize:10, color:'#dc2626', background:'none',
-              border:'none', cursor:'pointer', padding:0,
-            }}>
-              Uninstall
-            </button>
-          )}
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} className="sidebar-scroll">
+        {/* Language Bundles */}
+        <div style={{ padding: '8px 0 2px 12px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)' }}>
+          Language Bundles
         </div>
-      )}
+        {bundles.map(renderBundle)}
+
+        {/* Tools */}
+        {tools.length > 0 && (
+          <>
+            <div style={{ padding: '12px 0 2px 12px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)' }}>
+              Tools
+            </div>
+            {tools.map(renderBundle)}
+          </>
+        )}
+      </div>
     </div>
   );
 };

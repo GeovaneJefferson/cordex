@@ -37,7 +37,7 @@ async function buildTree(dir, depth = 0) {
   const entries = await fs.readdir(dir, { withFileTypes: true })
   const nodes = []
   for (const ent of entries) {
-    if (ent.name.startsWith('.') || SKIP_DIRS.has(ent.name)) continue
+    if (SKIP_DIRS.has(ent.name)) continue
     const fullPath = path.join(dir, ent.name)
     if (ent.isDirectory()) {
       nodes.push({
@@ -116,6 +116,19 @@ module.exports = function(mainWindow) {
       const content = await fs.readFile(filePath, 'utf8')
       return { ok: true, content }
     } catch (err) { return { ok: false, error: err.message } }
+  })
+
+
+  // ── Unwatch ──────────────────────────────────────────────────────────────────
+  ipcMain.handle('fs:unwatch', async () => {
+    if (fsWatcher) { try { await fsWatcher.close() } catch {} fsWatcher = null }
+    return { ok: true }
+  })
+
+  // ── Create folder ─────────────────────────────────────────────────────────────
+  ipcMain.handle('fs:mkdir', async (_ev, { dirPath }) => {
+    try { await fs.ensureDir(dirPath); return { ok: true } }
+    catch (err) { return { ok: false, error: err.message } }
   })
 
   ipcMain.handle('fs:writeFile', async (_ev, { filePath, content }) => {

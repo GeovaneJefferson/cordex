@@ -1,222 +1,430 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useAppState } from '../store/AppContext';
 import { useFileTree } from '../hooks/useFileTree';
 import { CodeEditor } from './CodeEditor';
 import { FlowView } from './FlowView';
-import { Tab } from '../types';   
+import { Tab } from '../types';
 
+// ── What zone the user is hovering while dragging ─────────────────────────────
+type DropZone = 'left' | 'right' | 'top' | 'bottom' | 'center' | null;
+
+// ── Pane content switcher ─────────────────────────────────────────────────────
 const PaneContent: React.FC<{ tabId: string }> = ({ tabId }) => {
   const { state } = useAppState();
   const tab = state.tabs.find((t: Tab) => t.id === tabId);
   if (!tab) return null;
-  if (tab.tabType === 'flow') return <FlowView flowTab={tab} />;
-  return <CodeEditor tabId={tabId} />;
+  return tab.tabType === 'flow' ? <FlowView flowTab={tab} /> : <CodeEditor tabId={tabId} />;
 };
 
-type DropZone = 'left' | 'right' | 'top' | 'bottom' | 'center' | null;
+// ── Empty pane ────────────────────────────────────────────────────────────────
+const EmptyPane: React.FC = () => (
+  <div style={{
+    flex: 1, display: 'flex', flexDirection: 'column',
+    alignItems: 'center', justifyContent: 'center',
+    color: 'var(--text-muted)', userSelect: 'none',
+    background: 'var(--bg-app)',
+  }}>
+    <span className="material-symbols-outlined" style={{ fontSize: 44, marginBottom: 8 }}>code</span>
+    <p style={{ fontSize: 12 }}>Drag a file here to open</p>
+  </div>
+);
 
-// VSCode-style drop zones that appear while dragging over a pane
-const DropZoneOverlay: React.FC<{ zone: DropZone; onDrop: (zone: DropZone, tabId: string | null, filePath?: string) => void }> = ({ zone, onDrop }) => {
-  const zones: { id: DropZone; style: React.CSSProperties; label: string }[] = [
-    { id: 'left',   label: 'left',   style: { left: 0,    top: '25%',  width: '25%',  height: '50%' } },
-    { id: 'right',  label: 'right',  style: { right: 0,   top: '25%',  width: '25%',  height: '50%' } },
-    { id: 'top',    label: 'top',    style: { top: 0,     left: '25%', width: '50%',  height: '25%' } },
-    { id: 'bottom', label: 'bottom', style: { bottom: 0,  left: '25%', width: '50%',  height: '25%' } },
-    { id: 'center', label: 'open',   style: { top: '25%', left: '25%', width: '50%',  height: '50%' } },
-  ];
+// ── Resizable sash ────────────────────────────────────────────────────────────
+const Sash: React.FC<{ vertical: boolean; onDrag: (d: number) => void }> = ({ vertical, onDrag }) => {
+  const down = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const start = vertical ? e.clientX : e.clientY;
+    const move  = (mv: MouseEvent) => onDrag(vertical ? mv.clientX - start : mv.clientY - start);
+    const up    = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+  return (
+    <div
+      onMouseDown={down}
+      style={{
+        flexShrink: 0, zIndex: 10, position: 'relative',
+        [vertical ? 'width' : 'height']: 5,
+        [vertical ? 'cursor' : 'cursor']: vertical ? 'col-resize' : 'row-resize',
+        background: 'transparent',
+        transition: 'background 0.1s',
+      }}
+      onMouseEnter={e  => (e.currentTarget.style.background = 'var(--accent)')}
+      onMouseLeave={e  => (e.currentTarget.style.background = 'transparent')}
+    />
+  );
+};
+
+// ── VSCode-style transparent drop overlay ─────────────────────────────────────
+// Shown while a tab or file is being dragged over a pane.
+const DropOverlay: React.FC<{ zone: DropZone }> = ({ zone }) => {
+  if (!zone) return null;
+
+  const style: React.CSSProperties = {
+    position: 'absolute', zIndex: 100, pointerEvents: 'none',
+    background: 'rgba(0,120,215,0.25)',
+    border: '2px solid rgba(0,120,215,0.7)',
+    transition: 'all 70ms ease',
+    borderRadius: 3,
+  };
+
+  if (zone === 'left')   Object.assign(style, { top: 0, left: 0, width: '50%', height: '100%' });
+  if (zone === 'right')  Object.assign(style, { top: 0, right: 0, left: '50%', width: '50%', height: '100%' });
+  if (zone === 'top')    Object.assign(style, { top: 0, left: 0, width: '100%', height: '50%' });
+  if (zone === 'bottom') Object.assign(style, { top: '50%', left: 0, width: '100%', height: '50%' });
+  if (zone === 'center') Object.assign(style, { top: '4%', left: '4%', width: '92%', height: '92%' });
+
+  return <div style={style} />;
+};
+
+// ── Hit-test: which zone is the cursor in? ───────────────────────────────────
+function getZone(e: React.DragEvent, el: HTMLElement): DropZone {
+  const r = el.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width;
+  const y = (e.clientY - r.top)  / r.height;
+  if (x < 0.2) return 'left';
+  if (x > 0.8) return 'right';
+  if (y < 0.2) return 'top';
+  if (y > 0.8) return 'bottom';
+  return 'center';
+}
+
+// ── Single pane wrapper — handles drag-over/drop with zone overlay ────────────
+interface PaneWrapperProps {
+  tabId: string | null;
+  style?: React.CSSProperties;
+  onDropZone: (zone: DropZone, tabId: string | null, filePath: string | null) => void;
+  children?: React.ReactNode;
+}
+
+const PaneWrapper: React.FC<PaneWrapperProps> = ({ tabId, style, onDropZone, children }) => {
+  const { readFile } = useFileTree();
+  const [zone, setZone] = useState<DropZone>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Guard: only intercept drag events when a real Cordex drag is in progress.
+  // window.__cordexDragging is set true only on TabBar/Sidebar dragStart and
+  // cleared on dragEnd — so text-selection mouse drags never trigger this.
+  const isCordexDrag = () => !!(window as any).__cordexDragging;
+
+  const dragOver = (e: React.DragEvent) => {
+    if (!isCordexDrag()) return;  // text selection — do nothing at all
+    e.preventDefault();
+    e.stopPropagation();
+    if (!ref.current) return;
+    const z = getZone(e, ref.current);
+    if (z !== zone) setZone(z);
+  };
+
+  const dragLeave = (e: React.DragEvent) => {
+    if (!zone) return;
+    if (ref.current && ref.current.contains(e.relatedTarget as Node)) return;
+    setZone(null);
+  };
+
+  const drop = async (e: React.DragEvent) => {
+    if (!isCordexDrag()) return;
+    (window as any).__cordexDragging = false;  // clear on drop
+    e.preventDefault();
+    e.stopPropagation();
+    const dropZone = zone;
+    setZone(null);
+
+    const droppedTabId = e.dataTransfer.getData('application/x-cordex-tab');
+    if (droppedTabId) { onDropZone(dropZone, droppedTabId, null); return; }
+
+    // File tree node
+    try {
+      const node = JSON.parse(e.dataTransfer.getData('application/x-cordex-node'));
+      if (node?.type === 'file') onDropZone(dropZone, null, node.path);
+    } catch {}
+  };
 
   return (
-    <div className="absolute inset-0 z-30 pointer-events-none">
-      {zones.map(z => (
-        <div
-          key={z.id}
-          className="absolute pointer-events-auto flex items-center justify-center"
-          style={z.style}
-          onDragEnter={e => e.preventDefault()}
-          onDragOver={e => e.preventDefault()}
-          onDrop={e => {
-            e.preventDefault();
-            const tabId = e.dataTransfer.getData('application/x-cordex-tab');
-            if (tabId) { onDrop(z.id, tabId, undefined); return; }
-            try {
-              const node = JSON.parse(e.dataTransfer.getData('application/x-cordex-node'));
-              if (node?.type === 'file') onDrop(z.id, null, node.path);
-            } catch {}
-          }}
-        >
-          <div className={`rounded-lg border-2 transition-all duration-100 flex items-center justify-center
-            ${zone === z.id
-              ? 'bg-blue-500/20 border-blue-500 scale-105'
-              : 'bg-white/80 border-gray-300 hover:bg-blue-50 hover:border-blue-400'
-            }`}
-            style={{ width: 52, height: 44 }}
-          >
-            <span className="material-symbols-outlined text-[18px] text-blue-500">
-              {z.id === 'left' ? 'vertical_split' : z.id === 'right' ? 'vertical_split' : z.id === 'center' ? 'tab' : 'horizontal_split'}
-            </span>
-          </div>
-        </div>
-      ))}
+    <div
+      ref={ref}
+      style={{ ...style, position: 'relative', overflow: 'clip' }}
+      onDragOver={dragOver}
+      onDragLeave={dragLeave}
+      onDrop={drop}
+    >
+      {children ?? (tabId ? <PaneContent tabId={tabId} /> : <EmptyPane />)}
+      <DropOverlay zone={zone} />
     </div>
   );
 };
+
+// ── Pane mini-header (shown only on non-primary panes) ────────────────────────
+const PaneTitleBar: React.FC<{ tab: Tab; onClose: () => void }> = ({ tab, onClose }) => (
+  <div style={{
+    height: 28, display: 'flex', alignItems: 'center', padding: '0 8px',
+    borderBottom: '1px solid var(--border-default)',
+    background: 'var(--bg-elevated)',
+    gap: 6, flexShrink: 0,
+  }}>
+    <span className="material-symbols-outlined" style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+      {tab.tabType === 'flow' ? 'account_tree' : 'description'}
+    </span>
+    <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      {tab.name}{tab.isDirty ? ' ●' : ''}
+    </span>
+    <button
+      title="Close pane"
+      onClick={onClose}
+      style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 2, borderRadius: 4 }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+    >
+      <span className="material-symbols-outlined" style={{ fontSize: 13 }}>close</span>
+    </button>
+  </div>
+);
+
+// ── Pane slot — shows titlebar if split pane, just content if primary ─────────
+const PaneSlot: React.FC<{ tabId: string | null; isPrimary?: boolean; onClose?: () => void }> = ({ tabId, isPrimary, onClose }) => {
+  const { state } = useAppState();
+  const tab = tabId ? state.tabs.find((t: Tab) => t.id === tabId) ?? null : null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
+      {!isPrimary && tab && onClose && <PaneTitleBar tab={tab} onClose={onClose} />}
+      {tabId ? <PaneContent tabId={tabId} /> : <EmptyPane />}
+    </div>
+  );
+};
+
+// ── Main SplitEditor ──────────────────────────────────────────────────────────
+// Clear cordex drag flag on dragend (no capture-phase listeners — those interfere with Monaco)
+if (typeof window !== 'undefined') {
+  document.addEventListener('dragend', () => { (window as any).__cordexDragging = false; });
+  document.addEventListener('drop',    () => { (window as any).__cordexDragging = false; });
+}
 
 export const SplitEditor: React.FC = () => {
   const { state, dispatch } = useAppState();
   const { readFile } = useFileTree();
-  const activeTab = state.tabs.find((t: Tab) => t.id === state.activeTabId);
-  const splitTab  = state.tabs.find((t: Tab) => t.id === state.splitTabId);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const containerRef  = useRef<HTMLDivElement>(null);
-  const [splitRatio,  setSplitRatio]  = useState(0.5);
-  const [splitDir,    setSplitDir]    = useState<'horizontal' | 'vertical'>('horizontal');
-  const [draggingOver, setDraggingOver] = useState(false);
-  const [hoverZone,   setHoverZone]   = useState<DropZone>(null);
-  const resizeDragging = useRef(false);
+  // Sash ratios (0.0–1.0)
+  const [ratioH, setRatioH] = useState(0.5);
+  const [ratioV, setRatioV] = useState(0.5);
 
-  // ── Resize divider ─────────────────────────────────────────────────────────
-  const onDivider = (e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeDragging.current = true;
-    const onMove = (mv: MouseEvent) => {
-      if (!resizeDragging.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      if (splitDir === 'horizontal') {
-        setSplitRatio(Math.min(0.8, Math.max(0.2, (mv.clientX - rect.left) / rect.width)));
-      } else {
-        setSplitRatio(Math.min(0.8, Math.max(0.2, (mv.clientY - rect.top) / rect.height)));
-      }
-    };
-    const onUp = () => {
-      resizeDragging.current = false;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
+  const { splitMode } = state;
+  const primaryId  = state.activeTabId;
+  const splitId    = state.splitTabId;
+  const splitId2   = state.splitTabId2;
+  const splitId3   = state.splitTabId3;
 
-  // ── Drop handler from zone overlay ────────────────────────────────────────
-  const handleZoneDrop = useCallback(async (zone: DropZone, tabId: string | null, filePath?: string) => {
-    setDraggingOver(false);
-    setHoverZone(null);
+  const dragH = useCallback((d: number) => {
+    if (!containerRef.current) return;
+    setRatioH(r => Math.min(0.8, Math.max(0.2, r + d / containerRef.current!.getBoundingClientRect().width)));
+  }, []);
+  const dragV = useCallback((d: number) => {
+    if (!containerRef.current) return;
+    setRatioV(r => Math.min(0.8, Math.max(0.2, r + d / containerRef.current!.getBoundingClientRect().height)));
+  }, []);
 
-    let resolvedId = tabId;
-    if (!resolvedId && filePath) {
-      // File dragged from the tree — open it first if needed
-      const existing = state.tabs.find((t: Tab) => t.path === filePath);
-      if (existing) {
-        resolvedId = existing.id;
-      } else {
-        await readFile(filePath);
-        // After readFile the new tab is the active one; grab it from state
-        // We use a small trick: readFile dispatches ADD_TAB + SET_ACTIVE_TAB
-        // so we just need to get the most recently-added tab for this path
-        resolvedId = '__pending__'; // handled below via state.activeTabId after dispatch
-      }
+  // ── Handle a drop onto any pane with a zone ───────────────────────────────
+  const handleDrop = useCallback(async (
+    zone: DropZone,
+    targetPane: 'primary' | 'split' | 'split2' | 'split3',
+    droppedTabId: string | null,
+    droppedFilePath: string | null
+  ) => {
+    // Resolve what tab we're placing
+    let tabId = droppedTabId;
+    if (!tabId && droppedFilePath) {
+      // Open the file first to get a tab ID
+      await readFile(droppedFilePath);
+      // readFile sets activeTabId, give state a tick to update
+      await new Promise(r => setTimeout(r, 50));
+      tabId = (window as any).__cordexLastOpenedTabId ?? droppedFilePath;
     }
+    if (!tabId) return;
 
-    if (!resolvedId) return;
-
-    if (resolvedId === '__pending__') {
-      // readFile already set the new tab as active; just set the split direction
-      if (zone === 'right' || zone === 'bottom') {
-        setSplitDir(zone === 'right' ? 'horizontal' : 'vertical');
-        // The newly opened tab is now state.activeTabId — move original to split pane
-        // We'll just let the user re-drop for complex splits; basic case: open in split
-      }
+    if (zone === 'center') {
+      // Just switch the pane to this tab
+      if (targetPane === 'primary') { dispatch({ type: 'SET_ACTIVE_TAB', id: tabId }); return; }
+      const modeNow = state.splitMode === 'none' ? 'horizontal' : state.splitMode;
+      const ids = [state.splitTabId ?? null, state.splitTabId2 ?? null, state.splitTabId3 ?? null];
+      if (targetPane === 'split')  ids[0] = tabId;
+      if (targetPane === 'split2') ids[1] = tabId;
+      if (targetPane === 'split3') ids[2] = tabId;
+      dispatch({ type: 'SET_SPLIT_MODE', mode: modeNow, tabIds: ids });
       return;
     }
 
-    if (!zone || zone === 'center') {
-      dispatch({ type: 'SET_ACTIVE_TAB', id: resolvedId });
-    } else if (zone === 'right' || zone === 'bottom') {
-      setSplitDir(zone === 'right' ? 'horizontal' : 'vertical');
-      dispatch({ type: 'SET_SPLIT_TAB', tabId: resolvedId });
-    } else if (zone === 'left' || zone === 'top') {
-      setSplitDir(zone === 'left' ? 'horizontal' : 'vertical');
-      if (state.activeTabId) dispatch({ type: 'SET_SPLIT_TAB', tabId: state.activeTabId });
-      dispatch({ type: 'SET_ACTIVE_TAB', id: resolvedId });
+    // Zone-based splits — create a new split pane with the dropped tab
+    if (zone === 'right') {
+      dispatch({ type: 'SET_SPLIT_MODE', mode: 'horizontal', tabIds: [tabId, null, null] });
+    } else if (zone === 'left') {
+      // Make the dropped file active, move current to split
+      const curPrimary = state.activeTabId;
+      dispatch({ type: 'SET_ACTIVE_TAB', id: tabId });
+      dispatch({ type: 'SET_SPLIT_MODE', mode: 'horizontal', tabIds: [curPrimary, null, null] });
+    } else if (zone === 'bottom') {
+      dispatch({ type: 'SET_SPLIT_MODE', mode: 'vertical', tabIds: [tabId, null, null] });
+    } else if (zone === 'top') {
+      const curPrimary = state.activeTabId;
+      dispatch({ type: 'SET_ACTIVE_TAB', id: tabId });
+      dispatch({ type: 'SET_SPLIT_MODE', mode: 'vertical', tabIds: [curPrimary, null, null] });
     }
-  }, [dispatch, state.activeTabId, state.tabs, readFile]);
+  }, [state, dispatch, readFile]);
 
-  const hasSplit   = !!splitTab;
-  const isVertical = splitDir === 'vertical';
+  const closePane = (which: 'split' | 'split2' | 'split3') => {
+    const ids: [string | null, string | null, string | null] = [
+      state.splitTabId ?? null,
+      state.splitTabId2 ?? null,
+      state.splitTabId3 ?? null,
+    ];
+    if (which === 'split')  ids[0] = null;
+    if (which === 'split2') ids[1] = null;
+    if (which === 'split3') ids[2] = null;
+    const remaining = ids.filter(Boolean).length;
+    dispatch({ type: 'SET_SPLIT_MODE', mode: remaining === 0 ? 'none' : state.splitMode, tabIds: ids });
+  };
 
-  return (
-    <div
-      ref={containerRef}
-      className={`flex-1 flex overflow-hidden min-h-0 ${isVertical ? 'flex-col' : 'flex-row'}`}
-    >
-      {/* ── Primary pane ──────────────────────────────────────────────────── */}
-      <div
-        style={hasSplit
-          ? (isVertical ? { height: `${splitRatio * 100}%` } : { width: `${splitRatio * 100}%` })
-          : { flex: 1 }}
-        className="flex flex-col min-w-0 min-h-0 relative"
-        onDragEnter={e => { if (!hasSplit) { e.preventDefault(); setDraggingOver(true); } }}
-        onDragLeave={e => { if (!hasSplit && !e.currentTarget.contains(e.relatedTarget as Node)) setDraggingOver(false); }}
-        onDragOver={e => e.preventDefault()}
-        onDrop={async e => {
-          e.preventDefault();
-          setDraggingOver(false);
-          const tabId = e.dataTransfer.getData('application/x-cordex-tab');
-          if (tabId) { dispatch({ type: 'SET_ACTIVE_TAB', id: tabId }); return; }
-          try {
-            const node = JSON.parse(e.dataTransfer.getData('application/x-cordex-node'));
-            if (node?.type === 'file') await readFile(node.path);
-          } catch {}
-        }}
+  const noSplit = splitMode === 'none' || !splitId;
+
+  // ── Single-pane (no split) ────────────────────────────────────────────────
+  if (noSplit) {
+    return (
+      <PaneWrapper
+        tabId={primaryId}
+        style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+        onDropZone={(zone, tabId, fp) => handleDrop(zone, 'primary', tabId, fp)}
       >
-        {activeTab ? (
-          <PaneContent tabId={activeTab.id} />
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-300 select-none bg-[#fafafa]">
-            <span className="material-symbols-outlined text-[52px] mb-2">code</span>
-            <p className="text-sm">Open a file to start editing</p>
-          </div>
-        )}
+        {primaryId ? <PaneContent tabId={primaryId} /> : <EmptyPane />}
+      </PaneWrapper>
+    );
+  }
 
-        {/* VSCode-style drop zones — shown while dragging over pane */}
-        {draggingOver && (
-          <DropZoneOverlay zone={hoverZone} onDrop={handleZoneDrop} />
-        )}
-      </div>
-
-      {/* ── Resize divider ────────────────────────────────────────────────── */}
-      {hasSplit && (
-        <div
-          onMouseDown={onDivider}
-          className={`flex-shrink-0 bg-gray-100 hover:bg-orange-400 transition-colors duration-150
-            ${isVertical ? 'h-[3px] cursor-row-resize w-full' : 'w-[3px] cursor-col-resize h-full'}`}
-        />
-      )}
-
-      {/* ── Secondary pane ────────────────────────────────────────────────── */}
-      {hasSplit && (
-        <div
-          style={isVertical ? { height: `${(1 - splitRatio) * 100}%` } : { width: `${(1 - splitRatio) * 100}%` }}
-          className="flex flex-col min-w-0 min-h-0 border-l border-gray-100"
-          onDragOver={e => e.preventDefault()}
-          onDrop={e => {
-            e.preventDefault();
-            const tabId = e.dataTransfer.getData('application/x-cordex-tab');
-            if (tabId) dispatch({ type: 'SET_SPLIT_TAB', tabId });
-          }}
+  // ── Horizontal split (left | right) ──────────────────────────────────────
+  if (splitMode === 'horizontal') {
+    return (
+      <div ref={containerRef} style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
+        <PaneWrapper
+          tabId={primaryId}
+          style={{ width: `${ratioH * 100}%`, display: 'flex', flexDirection: 'column', minWidth: 0 }}
+          onDropZone={(z, t, f) => handleDrop(z, 'primary', t, f)}
         >
-          <div className="h-8 flex items-center px-2 border-b border-gray-100 bg-gray-50 gap-2 flex-shrink-0">
-            <span className="material-symbols-outlined text-[14px] text-gray-400">
-              {splitTab?.tabType === 'flow' ? 'account_tree' : 'description'}
-            </span>
-            <span className="text-[12px] text-gray-600 flex-1 truncate">{splitTab.name}</span>
-            <button onClick={() => dispatch({ type: 'SET_SPLIT_TAB', tabId: null })}
-              className="p-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors">
-              <span className="material-symbols-outlined text-[14px]">close</span>
-            </button>
-          </div>
-          <PaneContent tabId={splitTab.id} />
+          {primaryId ? <PaneContent tabId={primaryId} /> : <EmptyPane />}
+        </PaneWrapper>
+
+        <Sash vertical onDrag={dragH} />
+
+        <PaneWrapper
+          tabId={splitId}
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}
+          onDropZone={(z, t, f) => handleDrop(z, 'split', t, f)}
+        >
+          {splitId ? (
+            <>
+              <PaneTitleBar
+                tab={state.tabs.find((t: Tab) => t.id === splitId)!}
+                onClose={() => closePane('split')}
+              />
+              <PaneContent tabId={splitId} />
+            </>
+          ) : <EmptyPane />}
+        </PaneWrapper>
+      </div>
+    );
+  }
+
+  // ── Vertical split (top / bottom) ────────────────────────────────────────
+  if (splitMode === 'vertical') {
+    return (
+      <div ref={containerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        <PaneWrapper
+          tabId={primaryId}
+          style={{ height: `${ratioV * 100}%`, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+          onDropZone={(z, t, f) => handleDrop(z, 'primary', t, f)}
+        >
+          {primaryId ? <PaneContent tabId={primaryId} /> : <EmptyPane />}
+        </PaneWrapper>
+
+        <Sash vertical={false} onDrag={dragV} />
+
+        <PaneWrapper
+          tabId={splitId}
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+          onDropZone={(z, t, f) => handleDrop(z, 'split', t, f)}
+        >
+          {splitId ? (
+            <>
+              <PaneTitleBar
+                tab={state.tabs.find((t: Tab) => t.id === splitId)!}
+                onClose={() => closePane('split')}
+              />
+              <PaneContent tabId={splitId} />
+            </>
+          ) : <EmptyPane />}
+        </PaneWrapper>
+      </div>
+    );
+  }
+
+  // ── Grid (2×2) ────────────────────────────────────────────────────────────
+  if (splitMode === 'grid') {
+    return (
+      <div ref={containerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        {/* Top row */}
+        <div style={{ height: `${ratioV * 100}%`, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
+          <PaneWrapper
+            tabId={primaryId}
+            style={{ width: `${ratioH * 100}%`, display: 'flex', flexDirection: 'column', minWidth: 0 }}
+            onDropZone={(z, t, f) => handleDrop(z, 'primary', t, f)}
+          >
+            {primaryId ? <PaneContent tabId={primaryId} /> : <EmptyPane />}
+          </PaneWrapper>
+          <Sash vertical onDrag={dragH} />
+          <PaneWrapper
+            tabId={splitId}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}
+            onDropZone={(z, t, f) => handleDrop(z, 'split', t, f)}
+          >
+            {splitId ? (
+              <>
+                <PaneTitleBar tab={state.tabs.find((t: Tab) => t.id === splitId)!} onClose={() => closePane('split')} />
+                <PaneContent tabId={splitId} />
+              </>
+            ) : <EmptyPane />}
+          </PaneWrapper>
         </div>
-      )}
-    </div>
-  );
+
+        <Sash vertical={false} onDrag={dragV} />
+
+        {/* Bottom row */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
+          <PaneWrapper
+            tabId={splitId2 ?? null}
+            style={{ width: `${ratioH * 100}%`, display: 'flex', flexDirection: 'column', minWidth: 0 }}
+            onDropZone={(z, t, f) => handleDrop(z, 'split2', t, f)}
+          >
+            {splitId2 ? (
+              <>
+                <PaneTitleBar tab={state.tabs.find((t: Tab) => t.id === splitId2)!} onClose={() => closePane('split2')} />
+                <PaneContent tabId={splitId2} />
+              </>
+            ) : <EmptyPane />}
+          </PaneWrapper>
+          <Sash vertical onDrag={dragH} />
+          <PaneWrapper
+            tabId={splitId3 ?? null}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}
+            onDropZone={(z, t, f) => handleDrop(z, 'split3', t, f)}
+          >
+            {splitId3 ? (
+              <>
+                <PaneTitleBar tab={state.tabs.find((t: Tab) => t.id === splitId3)!} onClose={() => closePane('split3')} />
+                <PaneContent tabId={splitId3} />
+              </>
+            ) : <EmptyPane />}
+          </PaneWrapper>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 };

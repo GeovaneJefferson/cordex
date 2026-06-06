@@ -1,154 +1,164 @@
 import { useEffect, useRef } from 'react';
+import { useAppState } from '../store/AppContext';
 import { getExtensions } from '../extensions/registry';
+import type { Extension } from '../extensions/types';
 
-interface Extension { id: string; enabled: boolean; }
+const Cordex = (window as any).Cordex;
 
-let _msgId = 1;
-
+/**
+ * usePythonLSP — starts the pylsp bridge (via lsp:start-python IPC) then
+ * opens a WebSocket to it. Retries the WS connection with backoff while
+ * the bridge is still warming up. Wires Monaco diagnostics markers.
+ */
 export function usePythonLSP(language: string, projectRoot: string | null) {
-  const startedRef = useRef(false);
-  const wsRef      = useRef<WebSocket | null>(null);
+  const { state } = useAppState();
+  const startedRef  = useRef(false);
+  const wsRef       = useRef<WebSocket | null>(null);
+  const retryTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef  = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      retryTimer.current && clearTimeout(retryTimer.current);
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!projectRoot || language !== 'python') return;
 
+    // Only start if the Python bundle is installed & enabled
     let extensions: Extension[] = [];
-    try { extensions = getExtensions(); }
-    catch (err) { console.warn('[usePythonLSP] extensions error:', err); return; }
+    try { extensions = getExtensions(); } catch { return; }
+    const isEnabled = extensions.find(e => e.id === 'bundle-python')?.enabled === true;
+    if (!isEnabled) return;
 
-    const isEnabled = extensions.find(e => e.id === 'pyright')?.enabled === true;
-
-    if (!isEnabled) {
-      if (startedRef.current) shutdown();
-      return;
-    }
     if (startedRef.current) return;
     startedRef.current = true;
 
-    (async () => {
-      try {
-        await (window as any).Cordex?.lsp?.startPython?.(projectRoot);
-        await new Promise(r => setTimeout(r, 500));      // wait for WS server to bind
+    // Tell the main process to spawn pylsp and open the WS bridge
+    Cordex?.lsp?.startPython?.(projectRoot);
 
-        const ws = new WebSocket('ws://localhost:6007');
-        wsRef.current = ws;
+    // Connect to the bridge with exponential backoff (bridge takes ~300–1500ms to start)
+    let attempt = 0;
+    const delays = [800, 1500, 2500, 4000, 6000];
 
-        // ── JSON-RPC helpers ──────────────────────────────────────────────
-        const pending = new Map<number, { resolve: (v: any) => void; reject: (e: any) => void }>();
+    function tryConnect() {
+      if (!mountedRef.current) return;
+      if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-        function send(obj: object) {
-          const body   = JSON.stringify(obj);
-          const length = new TextEncoder().encode(body).length;
-          ws.send(`Content-Length: ${length}\r\n\r\n${body}`);
+      const ws = new WebSocket('ws://localhost:6007/');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (!mountedRef.current) { ws.close(); return; }
+        console.log('[usePythonLSP] Connected to pylsp');
+        attempt = 0;
+        initializeLSP(ws);
+      };
+
+      ws.onerror = () => {
+        if (!mountedRef.current) return;
+        const delay = delays[Math.min(attempt, delays.length - 1)];
+        console.warn(`[usePythonLSP] ws://localhost:6007 not ready (attempt ${attempt + 1}), retrying in ${delay}ms`);
+        attempt++;
+        if (attempt < 8) {
+          retryTimer.current = setTimeout(tryConnect, delay);
+        } else {
+          console.warn('[usePythonLSP] Giving up. Install pylsp: pip install python-lsp-server --break-system-packages');
+          startedRef.current = false;
         }
+      };
 
-        function request(method: string, params: object): Promise<any> {
-          const id = _msgId++;
-          return new Promise((resolve, reject) => {
-            pending.set(id, { resolve, reject });
-            send({ jsonrpc: '2.0', id, method, params });
-          });
-        }
-
-        function notify(method: string, params: object) {
-          send({ jsonrpc: '2.0', method, params });
-        }
-
-        // ── Incoming message framing ──────────────────────────────────────
-        let buf = '';
-        ws.onmessage = async ({ data }) => {
-          buf += data;
-          while (true) {
-            const sep = buf.indexOf('\r\n\r\n');
-            if (sep === -1) break;
-            const lenMatch = buf.slice(0, sep).match(/Content-Length:\s*(\d+)/i);
-            if (!lenMatch) { buf = buf.slice(sep + 4); break; }
-            const len   = parseInt(lenMatch[1], 10);
-            const start = sep + 4;
-            if (buf.length < start + len) break;
-            const body  = buf.slice(start, start + len);
-            buf         = buf.slice(start + len);
-
-            let msg: any;
-            try { msg = JSON.parse(body); } catch { continue; }
-
-            // Resolve pending requests
-            if ('id' in msg && !msg.method) {
-              const cb = pending.get(msg.id);
-              if (cb) { pending.delete(msg.id); msg.error ? cb.reject(msg.error) : cb.resolve(msg.result); }
-              continue;
-            }
-
-            // Diagnostics → Monaco markers
-            if (msg.method === 'textDocument/publishDiagnostics') {
-              const { uri, diagnostics } = msg.params;
-              const mon = await import('monaco-editor');
-              const model = mon.editor.getModel(mon.Uri.parse(uri));
-              if (!model) continue;
-              mon.editor.setModelMarkers(model, 'pyright', diagnostics.map((d: any) => ({
-                severity:        d.severity === 1 ? mon.MarkerSeverity.Error
-                               : d.severity === 2 ? mon.MarkerSeverity.Warning
-                               : d.severity === 3 ? mon.MarkerSeverity.Info
-                               :                    mon.MarkerSeverity.Hint,
-                startLineNumber: d.range.start.line + 1,
-                startColumn:     d.range.start.character + 1,
-                endLineNumber:   d.range.end.line + 1,
-                endColumn:       d.range.end.character + 1,
-                message:         d.message,
-                source:          d.source ?? 'pyright',
-              })));
-            }
-          }
-        };
-
-        ws.onerror = (e) => { console.error('[usePythonLSP] WS error', e); startedRef.current = false; };
-
-        ws.onopen = async () => {
-          await request('initialize', {
-            processId: null,
-            rootUri:   `file://${projectRoot}`,
-            capabilities: {
-              textDocument: {
-                publishDiagnostics: { relatedInformation: true },
-                completion:         { completionItem: { snippetSupport: true } },
-                hover:              {},
-              },
-            },
-            workspaceFolders: [{ uri: `file://${projectRoot}`, name: projectRoot.split('/').pop() ?? 'project' }],
-          });
-          notify('initialized', {});
-          console.log('[usePythonLSP] ready');
-
-          // Notify pyright about already-open Python models
-          const mon = await import('monaco-editor');
-          for (const model of mon.editor.getModels()) {
-            if (model.getLanguageId() !== 'python') continue;
-            notify('textDocument/didOpen', {
-              textDocument: { uri: model.uri.toString(), languageId: 'python', version: 1, text: model.getValue() },
-            });
-            // Keep diagnostics fresh on edit
-            model.onDidChangeContent(() => {
-              notify('textDocument/didChange', {
-                textDocument:   { uri: model.uri.toString(), version: model.getVersionId() },
-                contentChanges: [{ text: model.getValue() }],
-              });
-            });
-          }
-        };
-
-      } catch (err) {
-        console.error('[usePythonLSP] startup error:', err);
-        startedRef.current = false;
-      }
-    })();
-
-    function shutdown() {
-      wsRef.current?.close();
-      wsRef.current = null;
-      (window as any).Cordex?.lsp?.stopPython?.();
-      startedRef.current = false;
+      ws.onclose = () => {
+        if (!mountedRef.current) return;
+        wsRef.current = null;
+      };
     }
 
-    return shutdown;
+    // First attempt after a brief delay to let the bridge start
+    retryTimer.current = setTimeout(tryConnect, 800);
+
+    return () => {
+      retryTimer.current && clearTimeout(retryTimer.current);
+      wsRef.current?.close();
+      wsRef.current = null;
+      startedRef.current = false;
+      Cordex?.lsp?.stopPython?.();
+    };
   }, [language, projectRoot]);
+
+  // Wire diagnostics from pylsp → Monaco markers
+  function initializeLSP(ws: WebSocket) {
+    let msgId = 1;
+    function send(method: string, params: any) {
+      const body = JSON.stringify({ jsonrpc: '2.0', id: msgId++, method, params });
+      const header = `Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n`;
+      ws.send(header + body);
+    }
+
+    send('initialize', {
+      processId: null,
+      rootUri:   state.projectRoot ? `file://${state.projectRoot}` : null,
+      capabilities: {
+        textDocument: {
+          publishDiagnostics: { relatedInformation: true },
+          synchronization:    { didSave: true, didChange: 2 },
+        },
+      },
+    });
+
+    let buffer = '';
+    ws.onmessage = (e) => {
+      buffer += e.data;
+      while (true) {
+        const headerEnd = buffer.indexOf('\r\n\r\n');
+        if (headerEnd === -1) break;
+        const header = buffer.slice(0, headerEnd);
+        const lenMatch = header.match(/Content-Length:\s*(\d+)/i);
+        if (!lenMatch) { buffer = buffer.slice(headerEnd + 4); continue; }
+        const len = parseInt(lenMatch[1], 10);
+        const bodyStart = headerEnd + 4;
+        if (buffer.length < bodyStart + len) break;
+        const body = buffer.slice(bodyStart, bodyStart + len);
+        buffer = buffer.slice(bodyStart + len);
+        try {
+          const msg = JSON.parse(body);
+          if (msg.method === 'textDocument/publishDiagnostics') {
+            handleDiagnostics(msg.params);
+          } else if (msg.id === 1) {
+            // initialized response
+            send('initialized', {});
+            // Open all already-visible Python models
+            (window as any).__cordexNotifyLspOpen?.();
+          }
+        } catch {}
+      }
+    };
+  }
+
+  function handleDiagnostics(params: any) {
+    const mon = (window as any).monaco;
+    if (!mon) return;
+    const uri = params.uri?.replace('file://', '');
+    const model = mon.editor.getModels().find(
+      (m: any) => m.uri.path === uri || m.uri.toString() === params.uri
+    );
+    if (!model) return;
+    mon.editor.setModelMarkers(model, 'pylsp', params.diagnostics.map((d: any) => ({
+      startLineNumber: (d.range?.start?.line ?? 0) + 1,
+      startColumn:     (d.range?.start?.character ?? 0) + 1,
+      endLineNumber:   (d.range?.end?.line ?? 0) + 1,
+      endColumn:       (d.range?.end?.character ?? 0) + 1,
+      message:         d.message ?? '',
+      severity:        d.severity === 1 ? 8 : d.severity === 2 ? 4 : 2,
+      source:          d.source ?? 'pylsp',
+    })));
+    // Dispatch markers-changed so status bar updates
+    const allMarkers = mon.editor.getModelMarkers({});
+    window.dispatchEvent(new CustomEvent('cordex:markers-changed', { detail: allMarkers }));
+  }
 }

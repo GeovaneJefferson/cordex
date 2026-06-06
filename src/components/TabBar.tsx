@@ -47,7 +47,7 @@ export const TabBar: React.FC = () => {
     const cmd = cmds[activeTab.language] ?? `echo "Cannot run ${activeTab.language} directly"`;
 
     // Append a visible confirmation that the command was executed
-    const fullCommand = `${cmd}; echo "--- Command finished ---"\r`;
+    const fullCommand = `${cmd}\r`;
 
     const send = () => {
       const termId = (window as any).__terminalId ?? 'main-terminal';
@@ -95,6 +95,7 @@ export const TabBar: React.FC = () => {
     setDragSrc(tabId);
     e.dataTransfer.setData('application/x-cordex-tab', tabId);
     e.dataTransfer.effectAllowed = 'move';
+    (window as any).__cordexDragging = true;
   };
 
   const onDragOver = (e: React.DragEvent, tabId: string) => {
@@ -134,6 +135,7 @@ export const TabBar: React.FC = () => {
                 key={tab.id}
                 draggable
                 onDragStart={e => onDragStart(e, tab.id)}
+                // onDragEnd={() => { (window as any).__cordexDragging = false; }}
                 onDragOver={e => onDragOver(e, tab.id)}
                 onDragLeave={() => setDragOver(null)}
                 onDrop={e => onDrop(e, tab.id)}
@@ -156,10 +158,15 @@ export const TabBar: React.FC = () => {
                   {tab.isDirty && <span className="w-1.5 h-1.5 rounded-full bg-orange-400 group-hover:hidden" />}
                   <button
                     onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
-                    className={`${tab.isDirty ? 'hidden group-hover:flex' : 'opacity-0 group-hover:opacity-100'}
-                      items-center justify-center w-4 h-4 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded transition-all`}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                      opacity: tab.isDirty ? undefined : undefined,
+                      color: 'var(--text-muted)',
+                    }}
+                    className={`${tab.isDirty ? 'hidden group-hover:!flex' : 'opacity-0 group-hover:opacity-100 flex'} hover:bg-gray-200 hover:text-gray-700 rounded transition-all`}
                   >
-                    <span className="material-symbols-outlined text-[12px]">close</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 12, lineHeight: 1, display: 'block' }}>close</span>
                   </button>
                 </div>
               </div>

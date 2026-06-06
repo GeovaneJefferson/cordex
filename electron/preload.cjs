@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('Cordex', {
 
     // ── Agent ──────────────────────────────────────────────────────────
     agentRun: (payload, callbacks) => {
-      const { onPlan, onStepStart, onStepDone, onStepError, onDone, onError } = callbacks || {}
+      const { onPlan, onStepStart, onStepDone, onStepError, onDone, onError, onReport, onFileChanged } = callbacks || {}
 
       ipcRenderer.send('agent:run', payload)
 
@@ -24,7 +24,9 @@ contextBridge.exposeInMainWorld('Cordex', {
         'agent:step:done':  (_e, { id, result })   => onStepDone?.(id, result),
         'agent:step:error': (_e, { id, error })    => onStepError?.(id, error),
         'agent:done':       ()                     => { cleanup(); onDone?.() },
+        'agent:report':     (_e, report)           => onReport?.(report),
         'agent:error':      (_e, err)              => { cleanup(); onError?.(err) },
+        'agent:file-changed': (_e, fp)               => onFileChanged?.(fp),
       }
 
       const cleanup = () =>
@@ -34,6 +36,8 @@ contextBridge.exposeInMainWorld('Cordex', {
       return cleanup
     },
 
+    agentToggle:  (p) => ipcRenderer.send('agent:toggle', p),
+    agentFileSaved: (p) => ipcRenderer.send('agent:file-saved', p),
     writeFile:     (p) => ipcRenderer.invoke('agent:write-file', p),
     searchProject: (p) => ipcRenderer.invoke('agent:search', p),
     onChunk: (cb) => { ipcRenderer.on('ai:analyze:chunk', (_e, c) => cb(c)) },
@@ -97,6 +101,16 @@ contextBridge.exposeInMainWorld('Cordex', {
     onReasonChunk:   (cb) => { const fn = (_e, t) => cb(t); ipcRenderer.on('ai:reason:chunk', fn);   return () => ipcRenderer.removeListener('ai:reason:chunk', fn); },
   },
 
+  agents: {
+    toggle: (type, enabled) => ipcRenderer.send('agent:toggle', { type, enabled }),
+    onIssue: (cb) => {
+      const fn = (_e, issue) => cb(issue);
+      ipcRenderer.on('agent:issue', fn);
+      return () => ipcRenderer.removeListener('agent:issue', fn);
+    },
+    fixIssue: (payload) => ipcRenderer.invoke('agent:fix-issue', payload),
+  },
+
   // ═══════════════════════ Git ═══════════════════════
   git: {
     status:       (cwd)        => ipcRenderer.invoke('git:status', { cwd }),
@@ -147,6 +161,13 @@ contextBridge.exposeInMainWorld('Cordex', {
     move:           (s, d)     => ipcRenderer.invoke('fs:move', { srcPath: s, destDir: d }),
     search:         (params)   => ipcRenderer.invoke('fs:search', params),
     watch:          (d)        => ipcRenderer.invoke('fs:watch', d),
+    unwatch:        (d)        => ipcRenderer.invoke('fs:unwatch', d),
+    mkdir:          (p)        => ipcRenderer.invoke('fs:mkdir', { dirPath: p }),
+    onFsChanged:    (cb)       => {
+      const fn = (_e, p) => cb(p);
+      ipcRenderer.on('fs:changed', fn);
+      return () => ipcRenderer.removeListener('fs:changed', fn);
+    },
     stopWatch:      ()         => ipcRenderer.invoke('fs:stopWatch'),
     revealInExplorer: (p)      => ipcRenderer.invoke('fs:revealInExplorer', p),
     generateProjectDocs: (root) => ipcRenderer.invoke('fs:generateProjectDocs', root),
@@ -196,6 +217,31 @@ contextBridge.exposeInMainWorld('Cordex', {
   session: {
     save: (data) => ipcRenderer.invoke('session:save', data),
     load: ()     => ipcRenderer.invoke('session:load'),
+  },
+  send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+  profile: {
+    get:        ()     => ipcRenderer.invoke('profile:get'),
+    chatModels: ()     => ipcRenderer.invoke('profile:chat-models'),
+    modelParams:(id)   => ipcRenderer.invoke('profile:model-params', { identifier: id }),
+  },
+  indexer: {
+    start:  (root, force) => ipcRenderer.send('indexer:start', { projectRoot: root, force: !!force }),
+    setRoot:(root)         => ipcRenderer.send('indexer:set-root', { projectRoot: root }),
+    onStatus: (cb) => {
+      const fn = (_e, data) => cb(data);
+      ipcRenderer.on('indexer:status', fn);
+      return () => ipcRenderer.removeListener('indexer:status', fn);
+    },
+  },
+  onSetupProgress: (cb) => {
+    const listener = (_e, data) => cb(data);
+    ipcRenderer.on('setup:progress', listener);
+    return () => ipcRenderer.removeListener('setup:progress', listener);
+  },
+  on: (channel, callback) => {
+    const listener = (_event, ...args) => callback(...args);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
   },
 })
 

@@ -25,6 +25,89 @@ const GlobalShortcuts: React.FC = () => {
 
   useEffect(() => { stateRef.current = state; });
 
+  // ── Track mouse button state globally so ResizeObserver can skip layout ─
+  // during text selection (prevents Monaco selection jumping on scroll)
+  useEffect(() => {
+    const down = (e: MouseEvent) => { (window as any).__mouseButtonsHeld = e.buttons; };
+    const up   = (e: MouseEvent) => { (window as any).__mouseButtonsHeld = e.buttons; };
+    // Use bubble phase only — never intercept events in capture phase
+    window.addEventListener('mousedown', down);
+    window.addEventListener('mouseup',   up);
+    window.addEventListener('mousemove', (e: MouseEvent) => {
+      (window as any).__mouseButtonsHeld = e.buttons;
+    });
+    return () => {
+      window.removeEventListener('mousedown', down);
+      window.removeEventListener('mouseup',   up);
+    };
+  }, []);
+
+  // ── Bootstrap: load all persisted settings on first mount ───────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await (window as any).Cordex?.settings?.get?.();
+        if (saved && Object.keys(saved).length > 0) {
+          dispatch({ type: 'SET_SETTINGS', settings: saved });
+        }
+      } catch {}
+
+      // Apply editor prefs from localStorage immediately (before settings IPC returns)
+      const getLS = (k: string, d: any) => { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } };
+      const opts = {
+        fontSize:            getLS('ce_fontSize', 13),
+        minimap:            { enabled: getLS('ce_minimap', false) },
+        lineNumbers:         getLS('ce_lineNumbers', 'on'),
+        wordWrap:            getLS('ce_wordWrap', 'off'),
+        tabSize:             getLS('ce_tabSize', 2),
+        renderWhitespace:    getLS('ce_whitespace', 'none'),
+        formatOnSave:        getLS('ce_formatOnSave', false),
+        formatOnPaste:       getLS('ce_formatOnPaste', false),
+        cursorBlinking:      getLS('ce_cursorBlinking', 'blink'),
+        cursorStyle:         getLS('ce_cursorStyle', 'line'),
+        fontLigatures:       getLS('ce_ligatures', false),
+        renderLineHighlight: getLS('ce_lineHighlight', 'all'),
+        smoothScrolling:     getLS('ce_smoothScroll', true),
+        stickyScroll:       { enabled: getLS('ce_stickyScroll', false) },
+        bracketPairColorization: { enabled: getLS('ce_bracketPairs', true) },
+      };
+      // Fire immediately for any already-mounted editors
+      window.dispatchEvent(new CustomEvent('cordex:editor-options', { detail: opts }));
+      // Also fire after a short delay in case editors mount after this effect
+      setTimeout(() => window.dispatchEvent(new CustomEvent('cordex:editor-options', { detail: opts })), 300);
+      setTimeout(() => window.dispatchEvent(new CustomEvent('cordex:editor-options', { detail: opts })), 800);
+
+      // Restore UI zoom
+      const zoom = getLS('ce_uiZoom', 100);
+      (window as any).Cordex?.zoom?.set?.((zoom || 100) / 100);
+    })();
+  }, []); // eslint-disable-line
+
+  // Re-apply editor settings whenever a new editor mounts
+  useEffect(() => {
+    const getLS = (k: string, d: any) => { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } };
+    const handler = () => {
+      const opts = {
+        fontSize:            getLS('ce_fontSize', 13),
+        minimap:            { enabled: getLS('ce_minimap', false) },
+        lineNumbers:         getLS('ce_lineNumbers', 'on'),
+        wordWrap:            getLS('ce_wordWrap', 'off'),
+        tabSize:             getLS('ce_tabSize', 2),
+        renderWhitespace:    getLS('ce_whitespace', 'none'),
+        cursorBlinking:      getLS('ce_cursorBlinking', 'smooth'),
+        cursorStyle:         getLS('ce_cursorStyle', 'line'),
+        fontLigatures:       getLS('ce_ligatures', false),
+        renderLineHighlight: getLS('ce_lineHighlight', 'all'),
+        smoothScrolling:     getLS('ce_smoothScroll', true),
+        stickyScroll:       { enabled: getLS('ce_stickyScroll', false) },
+        bracketPairColorization: { enabled: getLS('ce_bracketPairs', true) },
+      };
+      window.dispatchEvent(new CustomEvent('cordex:editor-options', { detail: opts }));
+    };
+    window.addEventListener('cordex:editor-mounted', handler);
+    return () => window.removeEventListener('cordex:editor-mounted', handler);
+  }, []);
+
   useEffect(() => {
     const lastProject = localStorage.getItem('cordex_last_project');
     if (!lastProject || state.projectRoot) return; // nothing to restore or already open
@@ -33,6 +116,7 @@ const GlobalShortcuts: React.FC = () => {
       const result = await fsService.readDir(lastProject);
       if (result?.ok && result.tree) {
         dispatch({ type: 'SET_PROJECT', root: lastProject, tree: result.tree });
+        (window as any).Cordex?.indexer?.setRoot?.(lastProject);
 
         // 🔥 Fire-and-forget embedding index – runs only once after startup restore
         (window as any).Cordex?.ai?.embedProject?.(lastProject)
@@ -169,6 +253,7 @@ const GlobalShortcuts: React.FC = () => {
         const result = await fsService.readDir(dir);
         if (result?.ok && result.tree) {
           dispatch({ type: 'SET_PROJECT', root: dir, tree: result.tree });
+          (window as any).Cordex?.indexer?.setRoot?.(dir);
         }
         return;
       }
@@ -208,6 +293,13 @@ const GlobalShortcuts: React.FC = () => {
       if (!e.shiftKey && e.key === 'n') {
         e.preventDefault(); e.stopPropagation();
         dispatch({ type: 'NEW_FILE' });
+        // Focus editor — retry until Monaco mounts
+        const tryFocus = (attempts = 0) => {
+          const ed = (window as any).__activeEditor;
+          if (ed) { ed.focus(); return; }
+          if (attempts < 10) setTimeout(() => tryFocus(attempts + 1), 60);
+        };
+        setTimeout(tryFocus, 60);
         return;
       }
     };

@@ -1,0 +1,9 @@
+directories:
+  output: release
+  buildResources: build
+appId: com.cordex.app
+files:
+  - filter:
+      - dist/**/*
+      - electron/**/*
+electronVersion: 28.3.3

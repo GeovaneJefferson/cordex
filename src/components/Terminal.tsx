@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAppState } from '../store/AppContext';
 import { useTerminal } from '../hooks/useTerminal';
+// Assuming Xterm is imported here from 'xterm'
+import { Terminal as XTermInstance } from 'xterm';
 
 interface TerminalProps {
   id: string;
@@ -14,14 +16,12 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
     cwd: state.projectRoot ?? undefined,
   });
 
-  // Context menu state
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number }>({
     visible: false,
     x: 0,
     y: 0,
   });
 
-  // ── Fit on visibility change ──────────────────────────────
   useEffect(() => {
     if (isVisible) {
       const timer = setTimeout(() => fitTerminal(), 30);
@@ -29,38 +29,32 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
     }
   }, [isVisible, fitTerminal]);
 
-  // ── Copy helpers ─────────────────────────────────────────
   const copySelection = useCallback(() => {
     const term = termRef.current;
     if (!term) return;
+    
+    // Correct way to get selection length in xterm.js
     const selection = term.getSelection();
     if (selection) {
-      navigator.clipboard.writeText(selection).catch(() => {
-        // fallback for older Electron
-        const textarea = document.createElement('textarea');
-        textarea.value = selection;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
+      navigator.clipboard.writeText(selection).catch(async () => {
+        // Fallback
+        await navigator.clipboard.writeText(selection);
       });
     }
   }, [termRef]);
 
-  // ── Keyboard copy shortcut ───────────────────────────────
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
 
-    // Attach custom key handler
-    term.attachCustomKeyEventHandler((e: KeyboardEvent): boolean => {
-      // Ctrl+Shift+C (standard terminal copy)
+    // Use proper xterm typing
+    const disposable = term.attachCustomKeyEventHandler((e: KeyboardEvent): boolean => {
       if (e.ctrlKey && e.shiftKey && e.code === 'KeyC') {
         copySelection();
-        return false; // prevent default
+        return false;
       }
-      // Optional: Ctrl+C when text is selected (like many terminals)
-      if (e.ctrlKey && e.code === 'KeyC' && term.hasSelection()) {
+      // Check selection existence using selection string length
+      if (e.ctrlKey && e.code === 'KeyC' && term.getSelection().length > 0) {
         copySelection();
         return false;
       }
@@ -68,29 +62,27 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
     });
 
     return () => {
-      // cleanup if necessary – but attachCustomKeyEventHandler replaces previous handler;
-      // we can't remove it, but it's fine since the terminal will be disposed.
+      disposable.dispose(); // IMPORTANT: xterm returns a disposable
     };
   }, [termRef, copySelection]);
 
-  // ── Focus the terminal when it becomes visible ─────────────────────────────
   useEffect(() => {
     if (isVisible) {
       const timer = setTimeout(() => {
         termRef.current?.focus();
-      }, 80); // short delay to let the DOM update
+      }, 80);
       return () => clearTimeout(timer);
     }
   }, [isVisible, termRef]);
 
-  // ── Right‑click context menu ─────────────────────────────
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const handleContextMenu = (e: MouseEvent) => {
       const term = termRef.current;
-      if (!term || !term.hasSelection()) return;
+      // Fixed: hasSelection is not a method, check length of selection
+      if (!term || term.getSelection().length === 0) return;
       e.preventDefault();
       setContextMenu({ visible: true, x: e.clientX, y: e.clientY });
     };
@@ -99,7 +91,6 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
     return () => container.removeEventListener('contextmenu', handleContextMenu);
   }, [containerRef, termRef]);
 
-  // Close context menu when clicking elsewhere
   useEffect(() => {
     if (!contextMenu.visible) return;
     const close = () => setContextMenu({ visible: false, x: 0, y: 0 });
@@ -122,7 +113,6 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
             top: contextMenu.y,
             zIndex: 100,
             backgroundColor: 'var(--bg-app)',
-            color: 'var(--text-secondary)',
           }}
           className="border border-gray-200 rounded shadow-lg py-1 text-xs"
         >
@@ -131,9 +121,8 @@ export const Terminal: React.FC<TerminalProps> = ({ id, isVisible }) => {
               copySelection();
               setContextMenu({ visible: false, x: 0, y: 0 });
             }}
-            className="w-full text-left px-3 py-1 hover:bg-gray-100 flex items-center gap-2"
+            className="w-full text-left px-3 py-1 hover:bg-gray-100"
           >
-            <span className="material-symbols-outlined text-[14px]">content_copy</span>
             Copy
           </button>
         </div>

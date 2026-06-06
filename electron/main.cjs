@@ -3,6 +3,7 @@ const { app, BrowserWindow } = require('electron')
 const path = require('path')
 const os   = require('os')
 const { loadSettings, saveSettings } = require('./utils/settings.cjs')
+const { ensureOllamaReady }              = require('./utils/ollamaSetup.cjs')
 
 // Hardware-driven rendering flags
 const totalRam = os.totalmem() / (1024 ** 3)
@@ -94,11 +95,24 @@ function createWindow() {
       safeRequireHandler('./handlers/ollamaHandler.cjs', undefined)
       safeRequireHandler('./handlers/chatHandler.cjs', mainWin)
       safeRequireHandler('./handlers/aiHandler.cjs', mainWin)
-      safeRequireHandler('./handlers/agentHandler.cjs', undefined)
+      // safeRequireHandler('./handlers/agentHandler.cjs', undefined)
+      safeRequireHandler('./handlers/agentHandler.cjs', mainWin)
+
+      // Profile + vector indexer handlers
+      try {
+        const profileMgr = require('./utils/profileManager.cjs')
+        const profileHandler = require('./handlers/profileHandler.cjs')
+        profileHandler(mainWin)
+        // Verify baseline models after Ollama is ready (2s delay)
+        setTimeout(() => profileMgr.ensureBaselineModels(mainWin).catch(console.error), 3000)
+      } catch (e) { console.error('[profile]', e.message) }
       safeRequireHandler('./services/aiRouter.cjs', mainWin)
 
       safeRequireHandler('./utils/gitHandler.cjs', undefined)
       safeRequireHandler('./handlers/historyHandler.cjs', undefined)
+
+      // Auto-setup Ollama + default model in background
+      setTimeout(() => ensureOllamaReady(mainWin).catch(console.error), 2000)
     })
   })
 

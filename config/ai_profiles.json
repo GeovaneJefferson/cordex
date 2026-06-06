@@ -1,0 +1,71 @@
+{
+  "global_configuration": {
+    "system_platform": "Local-First Development Engine",
+    "target_vram_limit_gb": 8,
+    "default_embedding_model": "qwen3-embedding",
+    "default_autocomplete_model": "qwen2.5-coder:1.5b-base",
+    "storage_paths": {
+      "profiles_directory": "./config/ai_profiles/",
+      "vector_index_store": "./config/vector_db/"
+    }
+  },
+  "models": {
+    "deepseek-r1-8b": {
+      "model_identifier": "deepseek-r1:8b",
+      "friendly_name": "DeepSeek R1 (8B) — Deep Logic Engine",
+      "role": "deep_debugging_and_analysis",
+      "hardware_requirements": { "minimum_vram_gb": 4.8, "recommended_vram_gb": 6.5 },
+      "parameters": {
+        "num_ctx": 16384, "temperature": 0.6, "top_p": 0.95, "repeat_penalty": 1.1,
+        "stop_tokens": ["</phrase>", "</think>", "### Instruction"]
+      },
+      "ui_features": {
+        "thinking_mode_allowed": true, "default_thinking_state": true,
+        "traffic_light_tier": "Green"
+      },
+      "system_prompt": "You are an expert software engineering analyzer. Use your recursive reasoning chain within <think> tags to thoroughly dissect code constraints, import trees, and execution logic before outputting clean, production-ready solutions."
+    },
+    "qwen2.5-coder-7b": {
+      "model_identifier": "qwen2.5-coder:7b",
+      "friendly_name": "Qwen2.5 Coder (7B) — Smart Engine",
+      "role": "chat_and_analysis",
+      "hardware_requirements": { "minimum_vram_gb": 4.0, "recommended_vram_gb": 5.5 },
+      "parameters": {
+        "num_ctx": 8192, "temperature": 0.7, "top_p": 0.9, "repeat_penalty": 1.05,
+        "stop_tokens": ["### Instruction", "Human:", "User:"]
+      },
+      "ui_features": {
+        "thinking_mode_allowed": false, "default_thinking_state": false,
+        "traffic_light_tier": "Green"
+      },
+      "system_prompt": "You are an expert software engineer. Provide clean, production-ready code and concise explanations."
+    },
+    "qwen2.5-coder-1.5b-base": {
+      "model_identifier": "qwen2.5-coder:1.5b-base",
+      "friendly_name": "Qwen2.5 Coder (1.5B) — Autocomplete Engine",
+      "role": "inline_ghost_text_autocomplete",
+      "hardware_requirements": { "minimum_vram_gb": 1.0, "recommended_vram_gb": 1.5 },
+      "parameters": {
+        "num_ctx": 2048, "temperature": 0.0, "top_p": 1.0, "repeat_penalty": 1.0,
+        "stop_tokens": ["\n\n", "```"]
+      },
+      "ui_features": {
+        "thinking_mode_allowed": false, "default_thinking_state": false,
+        "traffic_light_tier": "Green"
+      },
+      "system_prompt": "You are a raw mid-sentence code completion engine. Continue the provided code snippet precisely without returning prose, explanations, markdown formatting, or system dialogue."
+    },
+    "qwen3-embedding": {
+      "model_identifier": "qwen3-embedding",
+      "friendly_name": "Qwen3 Embedding — Semantic Indexer",
+      "role": "codebase_vectorization",
+      "hardware_requirements": { "minimum_vram_gb": 0.6, "recommended_vram_gb": 0.8 },
+      "parameters": { "num_ctx": 2048, "temperature": 0.0 },
+      "ui_features": {
+        "thinking_mode_allowed": false, "default_thinking_state": false,
+        "traffic_light_tier": "Green"
+      },
+      "system_prompt": ""
+    }
+  }
+}

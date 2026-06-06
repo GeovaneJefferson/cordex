@@ -1,0 +1,382 @@
+{
+  "/home/geovane/Documents/cordex/.vite/deps_temp_c7ec6e7b/package.json": {
+    "hash": "d0707362e90f00edd12435e9d3b9d71c",
+    "embedding": [],
+    "updatedAt": 1780731767553
+  },
+  "/home/geovane/Documents/cordex/.vscode/settings.json": {
+    "hash": "52db249880a6d665ea3715ca105e7a3c",
+    "embedding": [],
+    "updatedAt": 1780731767555
+  },
+  "/home/geovane/Documents/cordex/agent/agent_documentation_maker.py": {
+    "hash": "518b026ac90eab293d93261a94700331",
+    "embedding": [],
+    "updatedAt": 1780731767556
+  },
+  "/home/geovane/Documents/cordex/agent/bug-fixer.py": {
+    "hash": "21c80484a58b93f042506274b09e76fd",
+    "embedding": [],
+    "updatedAt": 1780731767557
+  },
+  "/home/geovane/Documents/cordex/agent/comment_agent.py": {
+    "hash": "6cbaa83814ec8b45d92859e6dbb430f7",
+    "embedding": [],
+    "updatedAt": 1780731767558
+  },
+  "/home/geovane/Documents/cordex/agent/pipeline/complex_test.py": {
+    "hash": "0cc49a5a9f397c2d1e3175e4a4068696",
+    "embedding": [],
+    "updatedAt": 1780731767559
+  },
+  "/home/geovane/Documents/cordex/agent/simpler-code-editor.py": {
+    "hash": "fd41d9afa914f90c5915098293ec8a0a",
+    "embedding": [],
+    "updatedAt": 1780731767561
+  },
+  "/home/geovane/Documents/cordex/config/ai_profiles.json": {
+    "hash": "28fc80e8958d97bd037a1c59dd08cd93",
+    "embedding": [],
+    "updatedAt": 1780731767562
+  },
+  "/home/geovane/Documents/cordex/electron/settingsManager.js": {
+    "hash": "9fc561398dc56bb37f86791a154ee121",
+    "embedding": [],
+    "updatedAt": 1780731767563
+  },
+  "/home/geovane/Documents/cordex/metro.config.js": {
+    "hash": "e4b03300a6dd50d889347408019baacc",
+    "embedding": [],
+    "updatedAt": 1780731767564
+  },
+  "/home/geovane/Documents/cordex/package-lock.json": {
+    "hash": "253b9772bcf677051bc9fa4ddb919559",
+    "embedding": [],
+    "updatedAt": 1780731767565
+  },
+  "/home/geovane/Documents/cordex/package.json": {
+    "hash": "2ef3968288bca3df579a4a4402f9ca26",
+    "embedding": [],
+    "updatedAt": 1780731767566
+  },
+  "/home/geovane/Documents/cordex/release/builder-effective-config.yaml": {
+    "hash": "d5228c2d1fc76e6ff3a93983eb96c46b",
+    "embedding": [],
+    "updatedAt": 1780731767567
+  },
+  "/home/geovane/Documents/cordex/src/App.tsx": {
+    "hash": "b8b8d0bad1bd9e6dfa42ea72f343ed8d",
+    "embedding": [],
+    "updatedAt": 1780731767568
+  },
+  "/home/geovane/Documents/cordex/src/components/AISettingsModal.tsx": {
+    "hash": "6604b79fea4bfbbb2381363611b5564b",
+    "embedding": [],
+    "updatedAt": 1780731767568
+  },
+  "/home/geovane/Documents/cordex/src/components/AgentPopover.tsx": {
+    "hash": "85190e080a4cf4637e60803ada52232b",
+    "embedding": [],
+    "updatedAt": 1780731767569
+  },
+  "/home/geovane/Documents/cordex/src/components/AndroidEmulatorPanel.tsx": {
+    "hash": "21f958a47127cbd4f6a590b0640b43b8",
+    "embedding": [],
+    "updatedAt": 1780731767570
+  },
+  "/home/geovane/Documents/cordex/src/components/App.tsx": {
+    "hash": "51146572339919121f7ac0f599c4f9a1",
+    "embedding": [],
+    "updatedAt": 1780731767572
+  },
+  "/home/geovane/Documents/cordex/src/components/BottomPanel.tsx": {
+    "hash": "a01fca0905b6b043e50e2bf68e4708f0",
+    "embedding": [],
+    "updatedAt": 1780731767573
+  },
+  "/home/geovane/Documents/cordex/src/components/BrowserPanel.tsx": {
+    "hash": "31b9f00bc06a0580f99ad64964b4f7f5",
+    "embedding": [],
+    "updatedAt": 1780731767574
+  },
+  "/home/geovane/Documents/cordex/src/components/BugFixModal.tsx": {
+    "hash": "02ecfbf7c71201eb28d0c7d7a1df9883",
+    "embedding": [],
+    "updatedAt": 1780731767575
+  },
+  "/home/geovane/Documents/cordex/src/components/BugFloatingPanel.tsx": {
+    "hash": "04746633be554f65b23a1290461a8681",
+    "embedding": [],
+    "updatedAt": 1780731767576
+  },
+  "/home/geovane/Documents/cordex/src/components/ChatPanel.tsx": {
+    "hash": "4bb8dc3d196c8178d5837bed5723000b",
+    "embedding": [],
+    "updatedAt": 1780731767576
+  },
+  "/home/geovane/Documents/cordex/src/components/CodeEditor.tsx": {
+    "hash": "da20abf6b3d74e5738de7a0ad9912cfe",
+    "embedding": [],
+    "updatedAt": 1780731767577
+  },
+  "/home/geovane/Documents/cordex/src/components/CommandPalette.tsx": {
+    "hash": "9d6bad817bbaa72a566cebd71401c2be",
+    "embedding": [],
+    "updatedAt": 1780731767577
+  },
+  "/home/geovane/Documents/cordex/src/components/CustomActionsPanel.tsx": {
+    "hash": "fcbc5d231ef311cce6ca46804f94d24f",
+    "embedding": [],
+    "updatedAt": 1780731767578
+  },
+  "/home/geovane/Documents/cordex/src/components/EditorContainer.tsx": {
+    "hash": "748f05dbc8488601051c59f778473ab4",
+    "embedding": [],
+    "updatedAt": 1780731767578
+  },
+  "/home/geovane/Documents/cordex/src/components/ExtensionPanel.tsx": {
+    "hash": "8eabcc651b6d16e9572235dc3f2e2072",
+    "embedding": [],
+    "updatedAt": 1780731767579
+  },
+  "/home/geovane/Documents/cordex/src/components/FileContextMenu.tsx": {
+    "hash": "4658bd27ed3ad4cef2d296db53de247b",
+    "embedding": [],
+    "updatedAt": 1780731767580
+  },
+  "/home/geovane/Documents/cordex/src/components/FlowView.tsx": {
+    "hash": "d4f5abee82a1d47109b40d2313ea4afe",
+    "embedding": [],
+    "updatedAt": 1780731767580
+  },
+  "/home/geovane/Documents/cordex/src/components/GitPanel.tsx": {
+    "hash": "fdc6c32bd7ff5851ec7b5a9be4c4b795",
+    "embedding": [],
+    "updatedAt": 1780731767581
+  },
+  "/home/geovane/Documents/cordex/src/components/HardwareBadge.tsx": {
+    "hash": "3230e94bb7cc4d7e2efbdfc4a7ecc73c",
+    "embedding": [],
+    "updatedAt": 1780731767581
+  },
+  "/home/geovane/Documents/cordex/src/components/Leftnav.tsx": {
+    "hash": "60565cb338d970faaaead3e3b56d12c9",
+    "embedding": [],
+    "updatedAt": 1780731767582
+  },
+  "/home/geovane/Documents/cordex/src/components/LocalHistoryPanel.tsx": {
+    "hash": "45701236fa9aa8dc06c2072e9bf7f14c",
+    "embedding": [],
+    "updatedAt": 1780731767582
+  },
+  "/home/geovane/Documents/cordex/src/components/SearchPanel.tsx": {
+    "hash": "8142c720a34a33a4c07e8bb65309a65f",
+    "embedding": [],
+    "updatedAt": 1780731767583
+  },
+  "/home/geovane/Documents/cordex/src/components/SetupProgress.tsx": {
+    "hash": "5e0f2e1848182a184b2effac9640d255",
+    "embedding": [],
+    "updatedAt": 1780731767583
+  },
+  "/home/geovane/Documents/cordex/src/components/Sidebar.tsx": {
+    "hash": "dfd0a070c7c4e82e98b7796ed33a3a55",
+    "embedding": [],
+    "updatedAt": 1780731767584
+  },
+  "/home/geovane/Documents/cordex/src/components/SplitEditor.tsx": {
+    "hash": "63e4f9b01f9ea845d77c25d6180c0020",
+    "embedding": [],
+    "updatedAt": 1780731767585
+  },
+  "/home/geovane/Documents/cordex/src/components/StatusBar.tsx": {
+    "hash": "efa95a8b44075e85f488b3c0004971e7",
+    "embedding": [],
+    "updatedAt": 1780731767585
+  },
+  "/home/geovane/Documents/cordex/src/components/TabBar.tsx": {
+    "hash": "4120d50befb14871fa2c58cacd0bb009",
+    "embedding": [],
+    "updatedAt": 1780731767586
+  },
+  "/home/geovane/Documents/cordex/src/components/Terminal.tsx": {
+    "hash": "c2ecf2b6742e2e882ccb98351f509445",
+    "embedding": [],
+    "updatedAt": 1780731767586
+  },
+  "/home/geovane/Documents/cordex/src/electron.d.ts": {
+    "hash": "d2395a444f43a10b30ed26bce0bc41f4",
+    "embedding": [],
+    "updatedAt": 1780731767587
+  },
+  "/home/geovane/Documents/cordex/src/extensions/registry.ts": {
+    "hash": "3d6d4dbc844659dc2d29a5a36f3c4ffd",
+    "embedding": [],
+    "updatedAt": 1780731767587
+  },
+  "/home/geovane/Documents/cordex/src/extensions/types.ts": {
+    "hash": "76982fb8ccb670a5f5491bf136aa3df6",
+    "embedding": [],
+    "updatedAt": 1780731767588
+  },
+  "/home/geovane/Documents/cordex/src/hooks/useAI.ts": {
+    "hash": "9a5a96186db823dc31963e7caa9f12b2",
+    "embedding": [],
+    "updatedAt": 1780731767589
+  },
+  "/home/geovane/Documents/cordex/src/hooks/useAgent.ts": {
+    "hash": "d3b528ddd7352445d42949c5f3589560",
+    "embedding": [],
+    "updatedAt": 1780731767589
+  },
+  "/home/geovane/Documents/cordex/src/hooks/useFileTree.ts": {
+    "hash": "aa986445dcc34d4a08a541a8b3143d1f",
+    "embedding": [],
+    "updatedAt": 1780731767590
+  },
+  "/home/geovane/Documents/cordex/src/hooks/usePythonLSP.ts": {
+    "hash": "f01c4c7cecddb50a502b819ae981bd40",
+    "embedding": [],
+    "updatedAt": 1780731767591
+  },
+  "/home/geovane/Documents/cordex/src/hooks/useTerminal.ts": {
+    "hash": "e436aaf9c741b5a403ec22c4b2715cb7",
+    "embedding": [],
+    "updatedAt": 1780731767591
+  },
+  "/home/geovane/Documents/cordex/src/hooks/useTheme.ts": {
+    "hash": "1d5726efb491123f4591b07df7d22403",
+    "embedding": [],
+    "updatedAt": 1780731767592
+  },
+  "/home/geovane/Documents/cordex/src/hooks/useWordJump.ts": {
+    "hash": "f75773beceb61f01d971df1a7a7c55fe",
+    "embedding": [],
+    "updatedAt": 1780731767592
+  },
+  "/home/geovane/Documents/cordex/src/locales/en.json": {
+    "hash": "0ef414d6f234a7155453187822e0d42a",
+    "embedding": [],
+    "updatedAt": 1780731767593
+  },
+  "/home/geovane/Documents/cordex/src/main.tsx": {
+    "hash": "e67f8aea8f12fc9c1c354afbe6e2e0c8",
+    "embedding": [],
+    "updatedAt": 1780731767593
+  },
+  "/home/geovane/Documents/cordex/src/services/aiService.ts": {
+    "hash": "b86dea9f8f14a7a646ba195378345c1f",
+    "embedding": [],
+    "updatedAt": 1780731767594
+  },
+  "/home/geovane/Documents/cordex/src/services/fsService.ts": {
+    "hash": "a5faf8291aca35ca2c5aa94e3dd8c5c6",
+    "embedding": [],
+    "updatedAt": 1780731767594
+  },
+  "/home/geovane/Documents/cordex/src/services/hardwareService.ts": {
+    "hash": "df2310a8d57d4d76b6d943409eeed09a",
+    "embedding": [],
+    "updatedAt": 1780731767595
+  },
+  "/home/geovane/Documents/cordex/src/services/index.ts": {
+    "hash": "ca8ca75812b43c9938b322d5d12b5b34",
+    "embedding": [],
+    "updatedAt": 1780731767595
+  },
+  "/home/geovane/Documents/cordex/src/services/settingsService.ts": {
+    "hash": "b39d5a60841dd61a881be1015d41ae4f",
+    "embedding": [],
+    "updatedAt": 1780731767596
+  },
+  "/home/geovane/Documents/cordex/src/services/terminalService.ts": {
+    "hash": "a97414e7bb9cab4f13d1f2f96280e735",
+    "embedding": [],
+    "updatedAt": 1780731767596
+  },
+  "/home/geovane/Documents/cordex/src/store/AppContext.tsx": {
+    "hash": "90cacc5ebc30eac408bd656b08881279",
+    "embedding": [],
+    "updatedAt": 1780731767597
+  },
+  "/home/geovane/Documents/cordex/src/store/reducer.ts": {
+    "hash": "edc257a97c3b451729af05f79b3aefa2",
+    "embedding": [],
+    "updatedAt": 1780731767597
+  },
+  "/home/geovane/Documents/cordex/src/themes/atomOneDark.ts": {
+    "hash": "2c3c98b8c5e7f20d396ca3df12e784e1",
+    "embedding": [],
+    "updatedAt": 1780731767598
+  },
+  "/home/geovane/Documents/cordex/src/themes/atomOneLight.ts": {
+    "hash": "7d4a30785ecb37331ce70d1e07bc787e",
+    "embedding": [],
+    "updatedAt": 1780731767598
+  },
+  "/home/geovane/Documents/cordex/src/themes/ayuDark.ts": {
+    "hash": "07da131f4770d3294160df58dc899679",
+    "embedding": [],
+    "updatedAt": 1780731767598
+  },
+  "/home/geovane/Documents/cordex/src/themes/darkProtocol.ts": {
+    "hash": "0606727f851c662de71e197037026e6a",
+    "embedding": [],
+    "updatedAt": 1780731767599
+  },
+  "/home/geovane/Documents/cordex/src/themes/dobriNextBlack.ts": {
+    "hash": "abc167f4c665435278e466e3bb43a2fb",
+    "embedding": [],
+    "updatedAt": 1780731767599
+  },
+  "/home/geovane/Documents/cordex/src/themes/index.ts": {
+    "hash": "d86d26701fe813828526274a5fbcc07c",
+    "embedding": [],
+    "updatedAt": 1780731767600
+  },
+  "/home/geovane/Documents/cordex/src/themes/solarizedDark.ts": {
+    "hash": "d6d64b9e670b0748deb231905f38a884",
+    "embedding": [],
+    "updatedAt": 1780731767600
+  },
+  "/home/geovane/Documents/cordex/src/types/index.ts": {
+    "hash": "fc87610dd10ecd574ba06d250dfce913",
+    "embedding": [],
+    "updatedAt": 1780731767601
+  },
+  "/home/geovane/Documents/cordex/src/utils/errorParser.ts": {
+    "hash": "9656178dbcca903baac1809aa2be8d28",
+    "embedding": [],
+    "updatedAt": 1780731767602
+  },
+  "/home/geovane/Documents/cordex/src/utils/fileIcons.ts": {
+    "hash": "38dca43b4a98c01f8ee5a0aa0c3eb42f",
+    "embedding": [],
+    "updatedAt": 1780731767602
+  },
+  "/home/geovane/Documents/cordex/src/vite-env.d.ts": {
+    "hash": "9bd79138dc67d57d68a5b508e06cf047",
+    "embedding": [],
+    "updatedAt": 1780731767603
+  },
+  "/home/geovane/Documents/cordex/tailwind.config.js": {
+    "hash": "f4602f20b48980ca0caeaf055febe442",
+    "embedding": [],
+    "updatedAt": 1780731767603
+  },
+  "/home/geovane/Documents/cordex/tsconfig.json": {
+    "hash": "893bfd79aa456e3171c5c1b2e9059b50",
+    "embedding": [],
+    "updatedAt": 1780731767604
+  },
+  "/home/geovane/Documents/cordex/tsconfig.node.json": {
+    "hash": "1c139bab5d1a90787cbb951073a5abde",
+    "embedding": [],
+    "updatedAt": 1780731767604
+  },
+  "/home/geovane/Documents/cordex/vite.config.ts": {
+    "hash": "169efd3014974b75b196de0e76e2b014",
+    "embedding": [],
+    "updatedAt": 1780731767605
+  }
+}

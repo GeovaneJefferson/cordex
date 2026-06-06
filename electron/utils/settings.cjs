@@ -11,6 +11,8 @@ const DEFAULT_SETTINGS = {
   analysisModel:     'qwen2.5-coder:7b',
   embedModel:        'qwen3-embedding:0.6b',
   flowModel:         'qwen2.5-coder:7b',
+  agentDocModel:     'qwen2.5-coder:7b', 
+  agentFixModel:     'qwen2.5-coder:7b', 
 }
 
 let cachedSettings = null

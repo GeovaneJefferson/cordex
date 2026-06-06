@@ -89,6 +89,84 @@ const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, cod
 // ══════════════════════════════════════════════════════════════
 //  Message bubble (memoized to avoid re-renders)
 // ══════════════════════════════════════════════════════════════
+
+// ── Parse <think>…</think> from model output ──────────────────────────────
+function parseThink(raw: string): { thinking: string; answer: string; inThink: boolean } {
+  const open  = raw.indexOf('<think>');
+  const close = raw.indexOf('</think>');
+  if (open === -1) return { thinking: '', answer: raw, inThink: false };
+  if (close === -1) {
+    // Still inside <think> block
+    return { thinking: raw.slice(open + 7), answer: '', inThink: true };
+  }
+  return {
+    thinking: raw.slice(open + 7, close).trim(),
+    answer:   (raw.slice(0, open) + raw.slice(close + 8)).trim(),
+    inThink:  false,
+  };
+}
+
+// ── Blinking "Thinking…" pill shown while <think> block is open ──────────
+const ThinkingPill: React.FC = () => (
+  <div style={{
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '4px 10px', borderRadius: 20,
+    background: 'var(--bg-muted)',
+    border: '1px solid var(--border-subtle)',
+    marginBottom: 6,
+  }}>
+    <span style={{
+      width: 7, height: 7, borderRadius: '50%', background: '#f59e0b',
+      display: 'inline-block', animation: 'thinkPulse 1.1s ease-in-out infinite',
+    }} />
+    <span style={{
+      width: 7, height: 7, borderRadius: '50%', background: '#f59e0b',
+      display: 'inline-block', animation: 'thinkPulse 1.1s ease-in-out 0.2s infinite',
+    }} />
+    <span style={{
+      width: 7, height: 7, borderRadius: '50%', background: '#f59e0b',
+      display: 'inline-block', animation: 'thinkPulse 1.1s ease-in-out 0.4s infinite',
+    }} />
+    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>Thinking…</span>
+    <style>{`@keyframes thinkPulse { 0%,80%,100%{opacity:0.2;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }`}</style>
+  </div>
+);
+
+// ── Collapsible reasoning box shown after <think> block completes ─────────
+const ThinkingBox: React.FC<{ content: string }> = ({ content }) => {
+  const [open, setOpen] = React.useState(false);
+  if (!content.trim()) return null;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          background: 'none', border: 'none', cursor: 'pointer',
+          padding: '3px 0', color: 'var(--text-muted)', fontSize: 11,
+        }}
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#f59e0b', transition: 'transform 0.2s', transform: open ? 'rotate(90deg)' : 'none' }}>
+          chevron_right
+        </span>
+        <span style={{ color: '#f59e0b', fontWeight: 600 }}>Reasoning</span>
+        <span style={{ opacity: 0.5 }}>({content.split(' ').length} words)</span>
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 4, padding: '8px 10px', borderRadius: 8,
+          background: 'var(--bg-subtle)', border: '1px solid var(--border-subtle)',
+          fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.6,
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          maxHeight: 260, overflowY: 'auto',
+        }}>
+          {content}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const MessageBubble: React.FC<{
   message: Message;
   isStreaming: boolean;
@@ -104,22 +182,43 @@ const MessageBubble: React.FC<{
     );
   }
 
-  // While streaming the LAST assistant message, render as plain text (fast)
+  // While streaming the LAST assistant message
   if (isStreaming && isLast) {
+    const { thinking, answer, inThink } = parseThink(message.content);
+    const displayText = answer || message.content;
     return (
       <div className="flex justify-start">
         <div className="max-w-[90%] px-3 py-2 rounded-xl text-sm bg-gray-100 text-gray-800 rounded-bl-sm overflow-x-auto">
-          <pre className="whitespace-pre-wrap font-sans text-sm m-0">{message.content}</pre>
-          <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-1" />
+          {inThink ? (
+            // Model is still inside <think>…</think> — show animated thinking pill
+            <ThinkingPill />
+          ) : displayText.length === 0 ? (
+            // Stream just started, nothing written yet — show "Thinking..." indicator
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#9ca3af', animation: 'thinkPulse 1.1s ease-in-out infinite' }} />
+              <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#9ca3af', animation: 'thinkPulse 1.1s ease-in-out 0.2s infinite' }} />
+              <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#9ca3af', animation: 'thinkPulse 1.1s ease-in-out 0.4s infinite' }} />
+              <span style={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic', marginLeft: 2 }}>Thinking…</span>
+              <style>{`@keyframes thinkPulse{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}`}</style>
+            </div>
+          ) : (
+            <>
+              {thinking ? <ThinkingBox content={thinking} /> : null}
+              <pre className="whitespace-pre-wrap font-sans text-sm m-0">{displayText}</pre>
+              <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-1" />
+            </>
+          )}
         </div>
       </div>
     );
   }
 
   // Full Markdown rendering for completed assistant messages
+  const { thinking: doneThinking, answer: doneAnswer } = parseThink(message.content);
   return (
     <div className="flex justify-start">
       <div className="max-w-[90%] px-3 py-2 rounded-xl text-sm bg-gray-100 text-gray-800 rounded-bl-sm overflow-x-auto">
+        {doneThinking ? <ThinkingBox content={doneThinking} /> : null}
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
@@ -140,14 +239,14 @@ const MessageBubble: React.FC<{
               const codeString = String(children).replace(/\n$/, '');
               const isInline = !match && !className;
               return isInline ? (
-                <code className={className} style={{ background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, fontSize: '0.9em' }}>{children}</code>
+                <code className={className} style={{ background: 'transparent', padding: '1px 4px', borderRadius: 3, fontSize: '0.9em' }}>{children}</code>
               ) : (
                 <CodeBlock language={match?.[1] ?? 'text'} code={codeString} />
               );
             },
           }}
         >
-          {message.content}
+          {doneAnswer || message.content}
         </ReactMarkdown>
       </div>
     </div>
@@ -204,6 +303,17 @@ export const ChatPanel: React.FC = () => {
     scrollToBottom();
   }, [messages, loading]);
 
+  // Expose global function to pre‑fill chat input (used by BugFixModal)
+  useEffect(() => {
+    (window as any).__cordexSetChatInput = (text: string) => {
+      setInput(text);
+      textareaRef.current?.focus();
+    };
+    return () => {
+      delete (window as any).__cordexSetChatInput;
+    };
+  }, [setInput, textareaRef]);
+
   const stopGeneration = () => {
     abortRef.current?.();
   };
@@ -252,7 +362,6 @@ export const ChatPanel: React.FC = () => {
           streamingBuffer.current.chunks.push(chunk);
           if (!streamingBuffer.current.timer) {
             streamingBuffer.current.timer = setTimeout(() => {
-              // Apply all buffered chunks at once
               const allChunks = streamingBuffer.current.chunks.join('');
               setMessages(prev =>
                 prev.map((msg, i) =>
@@ -267,7 +376,6 @@ export const ChatPanel: React.FC = () => {
           }
         },
         onDone: () => {
-          // Flush remaining chunks and mark done
           if (streamingBuffer.current.timer) {
             clearTimeout(streamingBuffer.current.timer);
             const remaining = streamingBuffer.current.chunks.join('');
@@ -286,7 +394,6 @@ export const ChatPanel: React.FC = () => {
           setLoading(false);
         },
         onError: (err: string) => {
-          // Flush buffer and show error
           if (streamingBuffer.current.timer) {
             clearTimeout(streamingBuffer.current.timer);
             const remaining = streamingBuffer.current.chunks.join('');
@@ -324,6 +431,25 @@ export const ChatPanel: React.FC = () => {
       }
     };
   };
+
+  // Keep a ref to the latest send function (avoids stale closure)
+  const sendRef = useRef(send);
+  useEffect(() => {
+    sendRef.current = send;
+  });
+
+  // Expose global function to set input AND auto‑send (used ONLY by agent "Find Solution")
+  useEffect(() => {
+    (window as any).__cordexSendToChat = (msg: string) => {
+      setInput(msg);
+      setTimeout(() => {
+        sendRef.current();
+      }, 50);
+    };
+    return () => {
+      delete (window as any).__cordexSendToChat;
+    };
+  }, [setInput]);
 
   // ── Mention handling ─────────────────────────────────────────
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
